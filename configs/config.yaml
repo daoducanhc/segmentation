@@ -1,0 +1,36 @@
+server:
+  http:
+    network: tcp
+    addr: 0.0.0.0:8000
+    timeout: 30
+  grpc:
+    network: tcp
+    addr: 0.0.0.0:9000
+    timeout: 30
+
+data:
+  clickhouse:
+    addr: clickhouse:9000
+    database: segmentation
+    username: default
+    password: ""
+    dial_timeout: 10
+    max_open_conns: 10
+    max_idle_conns: 5
+    conn_max_lifetime: 60
+
+kafka:
+  brokers:
+    - kafka:9092
+  topic: user_events
+  group_id: segmentation_consumer
+  batch_size: 1000
+  max_wait_seconds: 5
+
+mysql:
+  dsn: "user:password@tcp(mysql:3306)/app?parseTime=true"
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime_minutes: 60
+  sync_batch_size: 5000
+  sync_interval_minutes: 5

@@ -1,0 +1,483 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/cmd/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: SegmentService API
+    description: SegmentService provides segment management and evaluation
+    version: 0.0.1
+paths:
+    /v1/segments:
+        get:
+            tags:
+                - SegmentService
+            description: ListSegments lists all segments with pagination
+            operationId: SegmentService_ListSegments
+            parameters:
+                - name: page
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: nameFilter
+                  in: query
+                  schema:
+                    type: string
+                - name: typeFilter
+                  in: query
+                  schema:
+                    type: integer
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.ListSegmentsResponse'
+        post:
+            tags:
+                - SegmentService
+            description: CreateSegment creates a new segment definition
+            operationId: SegmentService_CreateSegment
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.segment.v1.CreateSegmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.CreateSegmentResponse'
+    /v1/segments/preview:
+        post:
+            tags:
+                - SegmentService
+            description: PreviewSegment previews segment results without saving
+            operationId: SegmentService_PreviewSegment
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.segment.v1.PreviewSegmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.PreviewSegmentResponse'
+    /v1/segments/{id}:
+        get:
+            tags:
+                - SegmentService
+            description: GetSegment retrieves a segment by ID
+            operationId: SegmentService_GetSegment
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.GetSegmentResponse'
+        put:
+            tags:
+                - SegmentService
+            description: UpdateSegment updates an existing segment
+            operationId: SegmentService_UpdateSegment
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.segment.v1.UpdateSegmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.UpdateSegmentResponse'
+        delete:
+            tags:
+                - SegmentService
+            description: DeleteSegment deletes a segment
+            operationId: SegmentService_DeleteSegment
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.DeleteSegmentResponse'
+    /v1/segments/{id}/count:
+        get:
+            tags:
+                - SegmentService
+            description: GetSegmentUserCount returns the count of users in a segment
+            operationId: SegmentService_GetSegmentUserCount
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: forceRefresh
+                  in: query
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.GetSegmentUserCountResponse'
+    /v1/segments/{id}/evaluate:
+        post:
+            tags:
+                - SegmentService
+            description: EvaluateSegment evaluates a segment and returns user IDs
+            operationId: SegmentService_EvaluateSegment
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.segment.v1.EvaluateSegmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.EvaluateSegmentResponse'
+components:
+    schemas:
+        api.segment.v1.ChildSegmentRef:
+            type: object
+            properties:
+                segmentId:
+                    type: string
+                negated:
+                    type: boolean
+            description: ChildSegmentRef references a child segment for composite segments
+        api.segment.v1.Condition:
+            type: object
+            properties:
+                field:
+                    type: string
+                operator:
+                    type: integer
+                    format: enum
+                value:
+                    $ref: '#/components/schemas/api.segment.v1.ConditionValue'
+                negated:
+                    type: boolean
+            description: Condition represents a single filtering condition
+        api.segment.v1.ConditionGroup:
+            type: object
+            properties:
+                operator:
+                    type: integer
+                    format: enum
+                conditions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.segment.v1.Condition'
+                groups:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.segment.v1.ConditionGroup'
+                negated:
+                    type: boolean
+            description: ConditionGroup represents a group of conditions combined with a logical operator
+        api.segment.v1.ConditionValue:
+            type: object
+            properties:
+                stringValue:
+                    type: string
+                intValue:
+                    type: integer
+                    format: int64
+                doubleValue:
+                    type: number
+                    format: double
+                boolValue:
+                    type: boolean
+                stringList:
+                    $ref: '#/components/schemas/api.segment.v1.StringList'
+                intList:
+                    $ref: '#/components/schemas/api.segment.v1.Int64List'
+                doubleRange:
+                    $ref: '#/components/schemas/api.segment.v1.DoubleRange'
+                intRange:
+                    $ref: '#/components/schemas/api.segment.v1.Int64Range'
+                dateRange:
+                    $ref: '#/components/schemas/api.segment.v1.DateRange'
+            description: ConditionValue holds the value for a condition
+        api.segment.v1.CreateSegmentRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                description:
+                    type: string
+                definition:
+                    $ref: '#/components/schemas/api.segment.v1.SegmentDefinition'
+                createdBy:
+                    type: string
+            description: CreateSegmentRequest
+        api.segment.v1.CreateSegmentResponse:
+            type: object
+            properties:
+                segment:
+                    $ref: '#/components/schemas/api.segment.v1.Segment'
+        api.segment.v1.DateRange:
+            type: object
+            properties:
+                start:
+                    type: string
+                    format: date-time
+                end:
+                    type: string
+                    format: date-time
+        api.segment.v1.DeleteSegmentResponse:
+            type: object
+            properties:
+                success:
+                    type: boolean
+        api.segment.v1.DoubleRange:
+            type: object
+            properties:
+                min:
+                    type: number
+                    format: double
+                max:
+                    type: number
+                    format: double
+        api.segment.v1.EvaluateSegmentRequest:
+            type: object
+            properties:
+                id:
+                    type: string
+                limit:
+                    type: integer
+                    format: int32
+                offset:
+                    type: integer
+                    format: int32
+                forceRefresh:
+                    type: boolean
+            description: EvaluateSegmentRequest
+        api.segment.v1.EvaluateSegmentResponse:
+            type: object
+            properties:
+                userIds:
+                    type: array
+                    items:
+                        type: string
+                totalCount:
+                    type: integer
+                    format: int64
+                evaluatedAt:
+                    type: string
+                    format: date-time
+                generatedSql:
+                    type: string
+        api.segment.v1.EventCondition:
+            type: object
+            properties:
+                eventName:
+                    type: string
+                lookbackDays:
+                    type: integer
+                    format: int32
+                countOperator:
+                    type: integer
+                    format: enum
+                countValue:
+                    type: integer
+                    format: int64
+                propertyFilter:
+                    $ref: '#/components/schemas/api.segment.v1.ConditionGroup'
+            description: EventCondition represents conditions on event data
+        api.segment.v1.GetSegmentResponse:
+            type: object
+            properties:
+                segment:
+                    $ref: '#/components/schemas/api.segment.v1.Segment'
+        api.segment.v1.GetSegmentUserCountResponse:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int64
+                countedAt:
+                    type: string
+                    format: date-time
+        api.segment.v1.Int64List:
+            type: object
+            properties:
+                values:
+                    type: array
+                    items:
+                        type: integer
+                        format: int64
+        api.segment.v1.Int64Range:
+            type: object
+            properties:
+                min:
+                    type: integer
+                    format: int64
+                max:
+                    type: integer
+                    format: int64
+        api.segment.v1.ListSegmentsResponse:
+            type: object
+            properties:
+                segments:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.segment.v1.Segment'
+                total:
+                    type: integer
+                    format: int32
+        api.segment.v1.PreviewSegmentRequest:
+            type: object
+            properties:
+                definition:
+                    $ref: '#/components/schemas/api.segment.v1.SegmentDefinition'
+                limit:
+                    type: integer
+                    format: int32
+            description: PreviewSegmentRequest
+        api.segment.v1.PreviewSegmentResponse:
+            type: object
+            properties:
+                userIds:
+                    type: array
+                    items:
+                        type: string
+                totalCount:
+                    type: integer
+                    format: int64
+                generatedSql:
+                    type: string
+        api.segment.v1.Segment:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                description:
+                    type: string
+                definition:
+                    $ref: '#/components/schemas/api.segment.v1.SegmentDefinition'
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+                createdBy:
+                    type: string
+                isActive:
+                    type: boolean
+                cachedCount:
+                    type: integer
+                    format: int64
+                lastEvaluated:
+                    type: string
+                    format: date-time
+            description: Segment represents a user segment
+        api.segment.v1.SegmentDefinition:
+            type: object
+            properties:
+                type:
+                    type: integer
+                    format: enum
+                userConditions:
+                    $ref: '#/components/schemas/api.segment.v1.ConditionGroup'
+                eventConditions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.segment.v1.EventCondition'
+                    description: 'For DYNAMIC segments: conditions on events'
+                eventLogic:
+                    type: integer
+                    format: enum
+                childSegments:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.segment.v1.ChildSegmentRef'
+                    description: 'For COMPOSITE segments: child segment references'
+                childLogic:
+                    type: integer
+                    format: enum
+                overallLogic:
+                    type: integer
+                    description: Overall logic between user_conditions and event_conditions
+                    format: enum
+            description: SegmentDefinition defines the complete segment logic
+        api.segment.v1.StringList:
+            type: object
+            properties:
+                values:
+                    type: array
+                    items:
+                        type: string
+        api.segment.v1.UpdateSegmentRequest:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                description:
+                    type: string
+                definition:
+                    $ref: '#/components/schemas/api.segment.v1.SegmentDefinition'
+            description: UpdateSegmentRequest
+        api.segment.v1.UpdateSegmentResponse:
+            type: object
+            properties:
+                segment:
+                    $ref: '#/components/schemas/api.segment.v1.Segment'
+tags:
+    - name: SegmentService

@@ -1,0 +1,299 @@
+syntax = "proto3";
+
+package api.segment.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "segmentation/api/segment/v1;v1";
+
+// SegmentService provides segment management and evaluation
+service SegmentService {
+  // CreateSegment creates a new segment definition
+  rpc CreateSegment(CreateSegmentRequest) returns (CreateSegmentResponse) {
+    option (google.api.http) = {
+      post: "/v1/segments"
+      body: "*"
+    };
+  }
+
+  // UpdateSegment updates an existing segment
+  rpc UpdateSegment(UpdateSegmentRequest) returns (UpdateSegmentResponse) {
+    option (google.api.http) = {
+      put: "/v1/segments/{id}"
+      body: "*"
+    };
+  }
+
+  // GetSegment retrieves a segment by ID
+  rpc GetSegment(GetSegmentRequest) returns (GetSegmentResponse) {
+    option (google.api.http) = {
+      get: "/v1/segments/{id}"
+    };
+  }
+
+  // ListSegments lists all segments with pagination
+  rpc ListSegments(ListSegmentsRequest) returns (ListSegmentsResponse) {
+    option (google.api.http) = {
+      get: "/v1/segments"
+    };
+  }
+
+  // DeleteSegment deletes a segment
+  rpc DeleteSegment(DeleteSegmentRequest) returns (DeleteSegmentResponse) {
+    option (google.api.http) = {
+      delete: "/v1/segments/{id}"
+    };
+  }
+
+  // EvaluateSegment evaluates a segment and returns user IDs
+  rpc EvaluateSegment(EvaluateSegmentRequest) returns (EvaluateSegmentResponse) {
+    option (google.api.http) = {
+      post: "/v1/segments/{id}/evaluate"
+      body: "*"
+    };
+  }
+
+  // PreviewSegment previews segment results without saving
+  rpc PreviewSegment(PreviewSegmentRequest) returns (PreviewSegmentResponse) {
+    option (google.api.http) = {
+      post: "/v1/segments/preview"
+      body: "*"
+    };
+  }
+
+  // GetSegmentUserCount returns the count of users in a segment
+  rpc GetSegmentUserCount(GetSegmentUserCountRequest) returns (GetSegmentUserCountResponse) {
+    option (google.api.http) = {
+      get: "/v1/segments/{id}/count"
+    };
+  }
+}
+
+// LogicalOperator defines the logical operator for combining conditions
+enum LogicalOperator {
+  LOGICAL_OPERATOR_UNSPECIFIED = 0;
+  LOGICAL_OPERATOR_AND = 1;
+  LOGICAL_OPERATOR_OR = 2;
+}
+
+// ComparisonOperator defines comparison operators for conditions
+enum ComparisonOperator {
+  COMPARISON_OPERATOR_UNSPECIFIED = 0;
+  COMPARISON_OPERATOR_EQ = 1; // equals
+  COMPARISON_OPERATOR_NEQ = 2; // not equals
+  COMPARISON_OPERATOR_GT = 3; // greater than
+  COMPARISON_OPERATOR_GTE = 4; // greater than or equals
+  COMPARISON_OPERATOR_LT = 5; // less than
+  COMPARISON_OPERATOR_LTE = 6; // less than or equals
+  COMPARISON_OPERATOR_IN = 7; // in list
+  COMPARISON_OPERATOR_NOT_IN = 8; // not in list
+  COMPARISON_OPERATOR_BETWEEN = 9; // between range
+  COMPARISON_OPERATOR_CONTAINS = 10; // contains substring
+  COMPARISON_OPERATOR_NOT_CONTAINS = 11; // not contains substring
+  COMPARISON_OPERATOR_IS_NULL = 12; // is null
+  COMPARISON_OPERATOR_IS_NOT_NULL = 13; // is not null
+}
+
+// SegmentType defines types of segments
+enum SegmentType {
+  SEGMENT_TYPE_UNSPECIFIED = 0;
+  SEGMENT_TYPE_STATIC = 1; // Pre-computed user list
+  SEGMENT_TYPE_DYNAMIC = 2; // Computed on-demand
+  SEGMENT_TYPE_COMPOSITE = 3; // Combines child segments
+}
+
+// ConditionValue holds the value for a condition
+message ConditionValue {
+  oneof value {
+    string string_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+    bool bool_value = 4;
+    StringList string_list = 5;
+    Int64List int_list = 6;
+    DoubleRange double_range = 7;
+    Int64Range int_range = 8;
+    DateRange date_range = 9;
+  }
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message Int64List {
+  repeated int64 values = 1;
+}
+
+message DoubleRange {
+  double min = 1;
+  double max = 2;
+}
+
+message Int64Range {
+  int64 min = 1;
+  int64 max = 2;
+}
+
+message DateRange {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+}
+
+// Condition represents a single filtering condition
+message Condition {
+  string field = 1; // Field to filter on (e.g., "platform", "event_count")
+  ComparisonOperator operator = 2; // Comparison operator
+  ConditionValue value = 3; // Value to compare against
+  bool negated = 4; // Apply NOT to this condition
+}
+
+// ConditionGroup represents a group of conditions combined with a logical operator
+message ConditionGroup {
+  LogicalOperator operator = 1; // AND/OR for combining conditions
+  repeated Condition conditions = 2; // List of conditions
+  repeated ConditionGroup groups = 3; // Nested groups for complex logic
+  bool negated = 4; // Apply NOT to entire group
+}
+
+// EventCondition represents conditions on event data
+message EventCondition {
+  string event_name = 1; // Event name to filter on
+  int32 lookback_days = 2; // Days to look back (e.g., 7 for A7, 30 for A30)
+  ComparisonOperator count_operator = 3; // Operator for event count comparison
+  int64 count_value = 4; // Value for count comparison
+  ConditionGroup property_filter = 5; // Additional filters on event properties
+}
+
+// ChildSegmentRef references a child segment for composite segments
+message ChildSegmentRef {
+  string segment_id = 1; // ID of the child segment
+  bool negated = 2; // Apply NOT to child segment result
+}
+
+// SegmentDefinition defines the complete segment logic
+message SegmentDefinition {
+  SegmentType type = 1;
+  
+  // For DYNAMIC segments: conditions on user attributes
+  ConditionGroup user_conditions = 2;
+  
+  // For DYNAMIC segments: conditions on events
+  repeated EventCondition event_conditions = 3;
+  LogicalOperator event_logic = 4; // How to combine event conditions
+  
+  // For COMPOSITE segments: child segment references
+  repeated ChildSegmentRef child_segments = 5;
+  LogicalOperator child_logic = 6; // How to combine child segments (AND/OR)
+  
+  // Overall logic between user_conditions and event_conditions
+  LogicalOperator overall_logic = 7;
+}
+
+// Segment represents a user segment
+message Segment {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  SegmentDefinition definition = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  string created_by = 7;
+  bool is_active = 8;
+  int64 cached_count = 9; // Last computed user count
+  google.protobuf.Timestamp last_evaluated = 10;
+}
+
+// CreateSegmentRequest
+message CreateSegmentRequest {
+  string name = 1;
+  string description = 2;
+  SegmentDefinition definition = 3;
+  string created_by = 4;
+}
+
+message CreateSegmentResponse {
+  Segment segment = 1;
+}
+
+// UpdateSegmentRequest
+message UpdateSegmentRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  SegmentDefinition definition = 4;
+}
+
+message UpdateSegmentResponse {
+  Segment segment = 1;
+}
+
+// GetSegmentRequest
+message GetSegmentRequest {
+  string id = 1;
+}
+
+message GetSegmentResponse {
+  Segment segment = 1;
+}
+
+// ListSegmentsRequest
+message ListSegmentsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string name_filter = 3;
+  SegmentType type_filter = 4;
+}
+
+message ListSegmentsResponse {
+  repeated Segment segments = 1;
+  int32 total = 2;
+}
+
+// DeleteSegmentRequest
+message DeleteSegmentRequest {
+  string id = 1;
+}
+
+message DeleteSegmentResponse {
+  bool success = 1;
+}
+
+// EvaluateSegmentRequest
+message EvaluateSegmentRequest {
+  string id = 1;
+  int32 limit = 2; // Max users to return (0 = all)
+  int32 offset = 3; // Pagination offset
+  bool force_refresh = 4; // Force recalculation
+}
+
+message EvaluateSegmentResponse {
+  repeated string user_ids = 1;
+  int64 total_count = 2;
+  google.protobuf.Timestamp evaluated_at = 3;
+  string generated_sql = 4; // For debugging/auditing
+}
+
+// PreviewSegmentRequest
+message PreviewSegmentRequest {
+  SegmentDefinition definition = 1;
+  int32 limit = 2;
+}
+
+message PreviewSegmentResponse {
+  repeated string user_ids = 1;
+  int64 total_count = 2;
+  string generated_sql = 3;
+}
+
+// GetSegmentUserCountRequest
+message GetSegmentUserCountRequest {
+  string id = 1;
+  bool force_refresh = 2;
+}
+
+message GetSegmentUserCountResponse {
+  int64 count = 1;
+  google.protobuf.Timestamp counted_at = 2;
+}
