@@ -13,6 +13,7 @@ import (
 )
 
 // Segment represents a segment in the database
+// Segments are combinations of criteria (A7, A30, PU, Platform, etc.) using AND/OR/NOT logic
 type Segment struct {
 	ID            string
 	Name          string
@@ -23,6 +24,7 @@ type Segment struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	IsActive      bool
+	ExpiresAt     *time.Time // Segment expiration date, nil = never expires
 	CachedCount   int64
 	LastEvaluated *time.Time
 }
@@ -54,13 +56,18 @@ func (r *SegmentRepo) Create(ctx context.Context, seg *Segment) error {
 
 	query := `
 		INSERT INTO segmentation.segment_definitions 
-		(id, name, description, segment_type, definition, created_by, created_at, updated_at, is_active, cached_count)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(id, name, description, segment_type, definition, created_by, created_at, updated_at, is_active, expires_at, cached_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	segType := "DYNAMIC"
 	if seg.Definition != nil {
 		segType = seg.Definition.Type.String()
+	}
+
+	var expiresAt time.Time
+	if seg.ExpiresAt != nil {
+		expiresAt = *seg.ExpiresAt
 	}
 
 	err = r.data.ExecuteExec(ctx, query,
@@ -73,6 +80,7 @@ func (r *SegmentRepo) Create(ctx context.Context, seg *Segment) error {
 		seg.CreatedAt,
 		seg.UpdatedAt,
 		boolToUint8(seg.IsActive),
+		expiresAt,
 		seg.CachedCount,
 	)
 
@@ -97,13 +105,18 @@ func (r *SegmentRepo) Update(ctx context.Context, seg *Segment) error {
 
 	query := `
 		INSERT INTO segmentation.segment_definitions 
-		(id, name, description, segment_type, definition, generated_sql, created_by, created_at, updated_at, is_active, cached_count, last_evaluated, _version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(id, name, description, segment_type, definition, generated_sql, created_by, created_at, updated_at, is_active, expires_at, cached_count, last_evaluated, _version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var lastEval time.Time
 	if seg.LastEvaluated != nil {
 		lastEval = *seg.LastEvaluated
+	}
+
+	var expiresAt time.Time
+	if seg.ExpiresAt != nil {
+		expiresAt = *seg.ExpiresAt
 	}
 
 	err = r.data.ExecuteExec(ctx, query,
@@ -117,6 +130,7 @@ func (r *SegmentRepo) Update(ctx context.Context, seg *Segment) error {
 		seg.CreatedAt,
 		time.Now(),
 		boolToUint8(seg.IsActive),
+		expiresAt,
 		seg.CachedCount,
 		lastEval,
 		time.Now().UnixMilli(),
@@ -133,7 +147,7 @@ func (r *SegmentRepo) Update(ctx context.Context, seg *Segment) error {
 func (r *SegmentRepo) GetByID(ctx context.Context, id string) (*Segment, error) {
 	query := `
 		SELECT id, name, description, segment_type, definition, generated_sql, 
-		       created_by, created_at, updated_at, is_active, cached_count, last_evaluated
+		       created_by, created_at, updated_at, is_active, expires_at, cached_count, last_evaluated
 		FROM segmentation.segment_definitions FINAL
 		WHERE id = ?
 	`
@@ -144,17 +158,19 @@ func (r *SegmentRepo) GetByID(ctx context.Context, id string) (*Segment, error) 
 	var defJSON string
 	var segType string
 	var isActive uint8
+	var expiresAt NullTime
 	var lastEval NullTime
 
 	err := row.Scan(
 		&seg.ID, &seg.Name, &seg.Description, &segType, &defJSON, &seg.GeneratedSQL,
-		&seg.CreatedBy, &seg.CreatedAt, &seg.UpdatedAt, &isActive, &seg.CachedCount, &lastEval,
+		&seg.CreatedBy, &seg.CreatedAt, &seg.UpdatedAt, &isActive, &expiresAt, &seg.CachedCount, &lastEval,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan segment: %w", err)
 	}
 
 	seg.IsActive = isActive == 1
+	seg.ExpiresAt = expiresAt.ToPointer()
 	seg.LastEvaluated = lastEval.ToPointer()
 
 	if defJSON != "" {
@@ -169,8 +185,8 @@ func (r *SegmentRepo) GetByID(ctx context.Context, id string) (*Segment, error) 
 
 // List lists segments with pagination
 func (r *SegmentRepo) List(ctx context.Context, page, pageSize int32, nameFilter string, typeFilter v1.SegmentType) ([]*Segment, int32, error) {
-	// Count query
-	countQuery := `SELECT count() FROM segmentation.segment_definitions FINAL WHERE is_active = 1`
+	// Count query - exclude expired segments
+	countQuery := `SELECT count() FROM segmentation.segment_definitions FINAL WHERE is_active = 1 AND (expires_at IS NULL OR expires_at > now())`
 	countArgs := []interface{}{}
 
 	if nameFilter != "" {
@@ -187,12 +203,12 @@ func (r *SegmentRepo) List(ctx context.Context, page, pageSize int32, nameFilter
 		return nil, 0, fmt.Errorf("failed to count segments: %w", err)
 	}
 
-	// List query
+	// List query - exclude expired segments
 	query := `
 		SELECT id, name, description, segment_type, definition, generated_sql,
-		       created_by, created_at, updated_at, is_active, cached_count, last_evaluated
+		       created_by, created_at, updated_at, is_active, expires_at, cached_count, last_evaluated
 		FROM segmentation.segment_definitions FINAL
-		WHERE is_active = 1
+		WHERE is_active = 1 AND (expires_at IS NULL OR expires_at > now())
 	`
 	args := []interface{}{}
 
@@ -224,17 +240,19 @@ func (r *SegmentRepo) List(ctx context.Context, page, pageSize int32, nameFilter
 		var defJSON string
 		var segType string
 		var isActive uint8
+		var expiresAt NullTime
 		var lastEval NullTime
 
 		err := rows.Scan(
 			&seg.ID, &seg.Name, &seg.Description, &segType, &defJSON, &seg.GeneratedSQL,
-			&seg.CreatedBy, &seg.CreatedAt, &seg.UpdatedAt, &isActive, &seg.CachedCount, &lastEval,
+			&seg.CreatedBy, &seg.CreatedAt, &seg.UpdatedAt, &isActive, &expiresAt, &seg.CachedCount, &lastEval,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan segment: %w", err)
 		}
 
 		seg.IsActive = isActive == 1
+		seg.ExpiresAt = expiresAt.ToPointer()
 		seg.LastEvaluated = lastEval.ToPointer()
 
 		if defJSON != "" {

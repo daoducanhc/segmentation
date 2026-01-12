@@ -171,6 +171,7 @@ ORDER BY user_id;
 -- SEGMENT DEFINITIONS TABLE
 -- =============================================================================
 -- Stores segment metadata and definitions
+-- NOTE: Segments are combinations of criteria (A7, A30, PU, etc.) using AND/OR/NOT logic
 CREATE TABLE IF NOT EXISTS segmentation.segment_definitions
 (
     id UUID,
@@ -179,6 +180,7 @@ CREATE TABLE IF NOT EXISTS segmentation.segment_definitions
     segment_type LowCardinality(String),  -- 'static', 'dynamic', 'composite'
     
     -- JSON definition (matches protobuf SegmentDefinition)
+    -- Contains criteria combinations with AND/OR/NOT logic
     definition String,
     
     -- Generated SQL cache
@@ -189,6 +191,10 @@ CREATE TABLE IF NOT EXISTS segmentation.segment_definitions
     created_at DateTime64(3) DEFAULT now64(3),
     updated_at DateTime64(3) DEFAULT now64(3),
     is_active UInt8 DEFAULT 1,
+    
+    -- Expiration: segment becomes inactive after this date
+    -- NULL means never expires
+    expires_at DateTime64(3) NULL,
     
     -- Cached results
     cached_count Int64 DEFAULT -1,
