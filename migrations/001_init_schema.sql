@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS segmentation.events
     session_id String DEFAULT '',
     platform LowCardinality(String) DEFAULT '',
     app_version String DEFAULT '',
+    app_id LowCardinality(String) DEFAULT '',
     
     -- Event properties (flexible JSON)
     properties String DEFAULT '{}',
@@ -94,6 +95,7 @@ SETTINGS index_granularity = 8192;
 -- Indexes for common query patterns
 ALTER TABLE segmentation.events ADD INDEX idx_user_id user_id TYPE bloom_filter(0.01) GRANULARITY 4;
 ALTER TABLE segmentation.events ADD INDEX idx_event_name event_name TYPE set(1000) GRANULARITY 4;
+ALTER TABLE segmentation.events ADD INDEX idx_app_id app_id TYPE set(100) GRANULARITY 4;
 
 -- =============================================================================
 -- MATERIALIZED VIEW: Daily User Activity

@@ -34,3 +34,33 @@ mysql:
   conn_max_lifetime_minutes: 60
   sync_batch_size: 5000
   sync_interval_minutes: 5
+
+# ThinkingData event sync configuration
+thinkingdata:
+  # VN region endpoint
+  vn:
+    query_url: "${THINKINGDATA_VN_QUERY_URL}"
+    query_token: "${THINKINGDATA_VN_QUERY_TOKEN}"
+  
+  # Global region endpoint
+  global:
+    query_url: "${THINKINGDATA_GLOBAL_QUERY_URL}"
+    query_token: "${THINKINGDATA_GLOBAL_QUERY_TOKEN}"
+  
+  # Common settings
+  event_view: "v_event_8"
+  sync_interval_minutes: 5
+  batch_size: 1000
+  lookback_days: 30
+  timeout_seconds: 120
+  
+  # Event types to sync
+  events:
+    - event_name: "pay"
+      fields:
+        - "appid"
+        - "amount"
+        - "currency"
+        - "storename"
+        - "#os"
+      enabled: true

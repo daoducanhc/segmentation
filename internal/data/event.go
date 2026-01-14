@@ -19,10 +19,12 @@ type Event struct {
 	SessionID  string
 	Platform   string
 	AppVersion string
+	AppID      string
 	Properties map[string]interface{}
 	Revenue    float64
 	Currency   string
 	ReceivedAt time.Time
+	CreatedAt  time.Time
 }
 
 // EventRepo handles event data operations
@@ -89,7 +91,7 @@ func (r *EventRepo) InsertBatch(ctx context.Context, events []*Event) error {
 	query := `
 		INSERT INTO segmentation.events 
 		(event_id, user_id, event_name, event_time, session_id, platform, 
-		 app_version, properties, revenue, currency, received_at, event_date)
+		 app_version, app_id, properties, revenue, currency, received_at, event_date)
 	`
 
 	batch, err := r.data.Batch(ctx, query)
@@ -119,6 +121,7 @@ func (r *EventRepo) InsertBatch(ctx context.Context, events []*Event) error {
 			event.SessionID,
 			event.Platform,
 			event.AppVersion,
+			event.AppID,
 			propsJSON,
 			event.Revenue,
 			event.Currency,

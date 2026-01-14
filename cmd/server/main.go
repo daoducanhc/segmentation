@@ -95,6 +95,12 @@ func main() {
 		}
 	}
 
+	// Initialize ThinkingData sync
+	var tdSync *consumer.ThinkingDataSync
+	if bc.ThinkingData != nil && len(bc.ThinkingData.Events) > 0 {
+		tdSync = consumer.NewThinkingDataSync(bc.ThinkingData, eventRepo, logger)
+	}
+
 	// Create Kratos app
 	app := kratos.New(
 		kratos.Name("segmentation"),
@@ -122,6 +128,14 @@ func main() {
 			log.NewHelper(logger).Errorf("failed to start MySQL sync: %v", err)
 		}
 		defer mysqlSync.Stop()
+	}
+
+	// Start ThinkingData sync
+	if tdSync != nil {
+		if err := tdSync.Start(ctx); err != nil {
+			log.NewHelper(logger).Errorf("failed to start ThinkingData sync: %v", err)
+		}
+		defer tdSync.Stop()
 	}
 
 	// Handle shutdown signals

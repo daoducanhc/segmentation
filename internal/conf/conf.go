@@ -2,10 +2,11 @@ package conf
 
 // Bootstrap holds all configuration
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	Kafka  *Kafka  `yaml:"kafka"`
-	MySQL  *MySQL  `yaml:"mysql"`
+	Server       *Server       `yaml:"server"`
+	Data         *Data         `yaml:"data"`
+	Kafka        *Kafka        `yaml:"kafka"`
+	MySQL        *MySQL        `yaml:"mysql"`
+	ThinkingData *ThinkingData `yaml:"thinkingdata"`
 }
 
 // Server configuration
@@ -73,4 +74,29 @@ type MySQL struct {
 	ConnMaxLifetimeMinutes int64  `yaml:"conn_max_lifetime_minutes"`
 	SyncBatchSize          int32  `yaml:"sync_batch_size"`
 	SyncIntervalMinutes    int32  `yaml:"sync_interval_minutes"`
+}
+
+// ThinkingData configuration for event sync
+type ThinkingData struct {
+	VN                  *TDEndpoint    `yaml:"vn"`
+	Global              *TDEndpoint    `yaml:"global"`
+	EventView           string         `yaml:"event_view"` // e.g., "v_event_8"
+	SyncIntervalMinutes int32          `yaml:"sync_interval_minutes"`
+	BatchSize           int32          `yaml:"batch_size"`
+	LookbackDays        int32          `yaml:"lookback_days"`
+	TimeoutSeconds      int32          `yaml:"timeout_seconds"`
+	Events              []*TDEventSync `yaml:"events"` // Event types to sync
+}
+
+// TDEndpoint represents a ThinkingData API endpoint
+type TDEndpoint struct {
+	QueryURL   string `yaml:"query_url"`
+	QueryToken string `yaml:"query_token"`
+}
+
+// TDEventSync defines how to sync a specific event type
+type TDEventSync struct {
+	EventName string   `yaml:"event_name"` // TD event name, e.g., "pay", "login"
+	Fields    []string `yaml:"fields"`     // Additional fields to fetch besides default
+	Enabled   bool     `yaml:"enabled"`
 }
