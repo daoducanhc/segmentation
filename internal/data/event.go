@@ -18,17 +18,15 @@ type Event struct {
 	EventTime time.Time
 
 	// Profile/Demographic
-	Platform    string // ios, android, web
-	Country     string
-	DeviceType  string // phone, tablet, pc
-	DeviceBrand string // Apple, Samsung, etc.
-	ServerID    string // Game server
-	Language    string
+	Platform string // web_mobile, web_pc, app (from plt_type)
+	Country  string // from #country_code
+	Language string // from #system_language[:2]
+	OS       string // from #os (iOS, Android, etc.)
 
 	// Monetization
 	Revenue        float64
 	Currency       string
-	PaymentChannel string // app, web
+	PaymentChannel string // webshop, google, 3rd_party, apple
 	VIPLevel       uint8
 
 	// Flexible storage
@@ -70,10 +68,10 @@ func (r *EventRepo) Insert(ctx context.Context, event *Event) error {
 	query := `
 		INSERT INTO segmentation.events 
 		(user_id, app_id, event_name, event_time, 
-		 platform, country, device_type, device_brand, server_id, language,
+		 platform, country, language, os,
 		 revenue, currency, payment_channel, vip_level,
 		 properties, received_at, event_date)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	return r.data.ExecuteExec(ctx, query,
@@ -83,10 +81,8 @@ func (r *EventRepo) Insert(ctx context.Context, event *Event) error {
 		event.EventTime,
 		event.Platform,
 		event.Country,
-		event.DeviceType,
-		event.DeviceBrand,
-		event.ServerID,
 		event.Language,
+		event.OS,
 		event.Revenue,
 		event.Currency,
 		event.PaymentChannel,
@@ -106,7 +102,7 @@ func (r *EventRepo) InsertBatch(ctx context.Context, events []*Event) error {
 	query := `
 		INSERT INTO segmentation.events 
 		(user_id, app_id, event_name, event_time, 
-		 platform, country, device_type, device_brand, server_id, language,
+		 platform, country, language, os,
 		 revenue, currency, payment_channel, vip_level,
 		 properties, received_at, event_date)
 	`
@@ -134,10 +130,8 @@ func (r *EventRepo) InsertBatch(ctx context.Context, events []*Event) error {
 			event.EventTime,
 			event.Platform,
 			event.Country,
-			event.DeviceType,
-			event.DeviceBrand,
-			event.ServerID,
 			event.Language,
+			event.OS,
 			event.Revenue,
 			event.Currency,
 			event.PaymentChannel,

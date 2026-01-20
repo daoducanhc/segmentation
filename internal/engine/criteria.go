@@ -367,7 +367,7 @@ func (b *SegmentBuilder) BuildSegment(criteria ...*Criterion) *v1.SegmentDefinit
 }
 
 // BuildSegmentAND creates a segment from criteria combined with AND logic
-// Example: A7 AND PU AND Platform("ios") = Active paying iOS users
+// Example: A7 AND PU AND Platform("app") = Active paying app users
 func (b *SegmentBuilder) BuildSegmentAND(criteria ...*Criterion) *v1.SegmentDefinition {
 	def := &v1.SegmentDefinition{
 		Type:         v1.SegmentType_SEGMENT_TYPE_DYNAMIC,
@@ -393,7 +393,7 @@ func (b *SegmentBuilder) BuildSegmentAND(criteria ...*Criterion) *v1.SegmentDefi
 }
 
 // BuildSegmentOR creates a segment from criteria combined with OR logic
-// Example: Platform("ios") OR Platform("android") = Mobile users
+// Example: Platform("web_mobile") OR Platform("app") = Mobile users
 func (b *SegmentBuilder) BuildSegmentOR(criteria ...*Criterion) *v1.SegmentDefinition {
 	def := &v1.SegmentDefinition{
 		Type:         v1.SegmentType_SEGMENT_TYPE_DYNAMIC,
@@ -562,7 +562,7 @@ func (c *CriteriaLibrary) GetCriteriaTemplates() map[string]*CriteriaTemplate {
 			Description: "Users on a specific platform",
 			Type:        "PLATFORM",
 			Params: []ParamDefinition{
-				{Name: "platform", Type: "string", Required: true, Description: "Platform name (ios, android, web)"},
+				{Name: "platform", Type: "string", Required: true, Description: "Platform name (web_mobile, web_pc, app)"},
 			},
 		},
 		"COUNTRY": {
@@ -570,7 +570,7 @@ func (c *CriteriaLibrary) GetCriteriaTemplates() map[string]*CriteriaTemplate {
 			Description: "Users from a specific country",
 			Type:        "COUNTRY",
 			Params: []ParamDefinition{
-				{Name: "country", Type: "string", Required: true, Description: "Country code (e.g., US, VN, JP)"},
+				{Name: "country", Type: "string", Required: true, Description: "Country code (e.g., VN)"},
 			},
 		},
 		"EVENT_PERFORMED": {

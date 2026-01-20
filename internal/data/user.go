@@ -12,11 +12,10 @@ import (
 // User represents a user in the database
 type User struct {
 	UserID           string
-	Platform         string
+	Platform         string // web_mobile, web_pc, app
 	Country          string
 	Language         string
-	DeviceType       string
-	AppVersion       string
+	OS               string // iOS, Android, etc.
 	FirstSeenAt      time.Time
 	LastSeenAt       time.Time
 	RegisteredAt     *time.Time
@@ -58,11 +57,11 @@ func (r *UserRepo) Upsert(ctx context.Context, user *User) error {
 
 	query := `
 		INSERT INTO segmentation.users 
-		(user_id, platform, country, language, device_type, app_version,
+		(user_id, platform, country, language, os,
 		 first_seen_at, last_seen_at, registered_at, is_registered, is_paying_user,
 		 total_revenue, total_purchases, lifetime_sessions, lifetime_events,
 		 custom_attributes, created_at, updated_at, _version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var registeredAt time.Time
@@ -75,8 +74,7 @@ func (r *UserRepo) Upsert(ctx context.Context, user *User) error {
 		user.Platform,
 		user.Country,
 		user.Language,
-		user.DeviceType,
-		user.AppVersion,
+		user.OS,
 		user.FirstSeenAt,
 		user.LastSeenAt,
 		registeredAt,
@@ -101,7 +99,7 @@ func (r *UserRepo) UpsertBatch(ctx context.Context, users []*User) error {
 
 	query := `
 		INSERT INTO segmentation.users 
-		(user_id, platform, country, language, device_type, app_version,
+		(user_id, platform, country, language, os,
 		 first_seen_at, last_seen_at, registered_at, is_registered, is_paying_user,
 		 total_revenue, total_purchases, lifetime_sessions, lifetime_events,
 		 custom_attributes, created_at, updated_at, _version)
@@ -129,8 +127,7 @@ func (r *UserRepo) UpsertBatch(ctx context.Context, users []*User) error {
 			user.Platform,
 			user.Country,
 			user.Language,
-			user.DeviceType,
-			user.AppVersion,
+			user.OS,
 			user.FirstSeenAt,
 			user.LastSeenAt,
 			registeredAt,
@@ -156,7 +153,7 @@ func (r *UserRepo) UpsertBatch(ctx context.Context, users []*User) error {
 // GetByID retrieves a user by ID
 func (r *UserRepo) GetByID(ctx context.Context, userID string) (*User, error) {
 	query := `
-		SELECT user_id, platform, country, language, device_type, app_version,
+		SELECT user_id, platform, country, language, os,
 		       first_seen_at, last_seen_at, registered_at, is_registered, is_paying_user,
 		       total_revenue, total_purchases, lifetime_sessions, lifetime_events,
 		       custom_attributes, created_at, updated_at
@@ -172,7 +169,7 @@ func (r *UserRepo) GetByID(ctx context.Context, userID string) (*User, error) {
 	var customAttrsJSON string
 
 	err := row.Scan(
-		&user.UserID, &user.Platform, &user.Country, &user.Language, &user.DeviceType, &user.AppVersion,
+		&user.UserID, &user.Platform, &user.Country, &user.Language, &user.OS,
 		&user.FirstSeenAt, &user.LastSeenAt, &registeredAt, &isRegistered, &isPayingUser,
 		&user.TotalRevenue, &user.TotalPurchases, &user.LifetimeSessions, &user.LifetimeEvents,
 		&customAttrsJSON, &user.CreatedAt, &user.UpdatedAt,

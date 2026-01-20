@@ -151,8 +151,8 @@ func (t *ThinkingDataSync) syncEventFromEndpoint(
 	lastSync := t.lastSyncTime[eventConf.EventName]
 	t.mu.RUnlock()
 
-	// Build query
-	query := t.buildQuery(eventConf, lastSync)
+	// Build query with region-specific event view
+	query := t.buildQuery(endpoint, eventConf, lastSync)
 	t.logger.Debugf("executing TD query for %s: %s", eventConf.EventName, query)
 
 	// Execute query
@@ -203,7 +203,7 @@ func (t *ThinkingDataSync) syncEventFromEndpoint(
 	return nil
 }
 
-func (t *ThinkingDataSync) buildQuery(eventConf *conf.TDEventSync, since time.Time) string {
+func (t *ThinkingDataSync) buildQuery(endpoint *conf.TDEndpoint, eventConf *conf.TDEventSync, since time.Time) string {
 	// Base fields that are always fetched
 	baseFields := []string{
 		`"#account_id"`,
@@ -223,23 +223,20 @@ func (t *ThinkingDataSync) buildQuery(eventConf *conf.TDEventSync, since time.Ti
 	query := fmt.Sprintf(
 		`SELECT %s FROM %s WHERE "#event_name"='%s' AND "$part_date" >= '%s'`,
 		fields,
-		t.config.EventView,
+		endpoint.EventView,
 		eventConf.EventName,
 		dateFilter,
 	)
 
 	// Add event-specific filters
 	switch eventConf.EventName {
-	case "login":
-		// Exclude gplay, fptplay login providers
-		query += ` AND ("loginprovider" IS NULL OR "loginprovider" NOT IN ('gplay', 'fptplay'))`
+	case "app_page_view":
+		// Filter for home page views only
+		query += ` AND "#account_id" IS NOT NULL AND "page_name" IN ('home_view', 'home_page')`
 	case "app_vip_level_up":
 		// Require app_id and current_vip_level to be not null
 		query += ` AND "app_id" IS NOT NULL AND "current_vip_level" IS NOT NULL`
 	}
-
-	// TODO: Remove limit after testing
-	query += ` LIMIT 10`
 
 	return query
 }
@@ -379,15 +376,21 @@ func (t *ThinkingDataSync) rowToEvent(headerIdx map[string]int, row []interface{
 		// Required
 		"#account_id": true,
 		"#event_time": true,
-		// Profile
-		"#os": true, "platform": true,
-		"#country": true, "country": true,
-		"#language": true, "language": true,
-		"device_type": true, "device_brand": true, "server_id": true,
-		// App
-		"appid": true, "app_id": true,
-		// Monetization
-		"amount": true, "currency": true, "storename": true, "current_vip_level": true,
+		// Profile (app_page_view event)
+		"plt_type":         true,
+		"#country_code":    true,
+		"#system_language": true,
+		"#os":              true,
+		"#zone_offset":     true,
+		// App ID (appid for pay, app_id for app_vip_level_up)
+		"appid":  true,
+		"app_id": true,
+		// Monetization (pay event)
+		"amount":    true,
+		"currency":  true,
+		"storename": true,
+		// VIP (app_vip_level_up event)
+		"current_vip_level": true,
 	}
 
 	// Build properties map from remaining fields
@@ -403,26 +406,23 @@ func (t *ThinkingDataSync) rowToEvent(headerIdx map[string]int, row []interface{
 	properties["region"] = region
 
 	// === Profile/Demographic fields ===
-	platform := cast.ToString(getValue("#os"))
-	if platform == "" {
-		platform = cast.ToString(getValue("platform"))
+	// Platform from plt_type (app_page_view event only): web_mobile, web_pc, app
+	platform := cast.ToString(getValue("plt_type"))
+
+	// Country from #country_code (app_page_view event only)
+	country := cast.ToString(getValue("#country_code"))
+
+	// Language from #system_language[:2] (first 2 chars only, app_page_view event only)
+	language := cast.ToString(getValue("#system_language"))
+	if len(language) > 2 {
+		language = language[:2]
 	}
 
-	country := cast.ToString(getValue("#country"))
-	if country == "" {
-		country = cast.ToString(getValue("country"))
-	}
-
-	deviceType := cast.ToString(getValue("device_type"))
-	deviceBrand := cast.ToString(getValue("device_brand"))
-	serverID := cast.ToString(getValue("server_id"))
-
-	language := cast.ToString(getValue("#language"))
-	if language == "" {
-		language = cast.ToString(getValue("language"))
-	}
+	// OS from #os (app_page_view event only)
+	os := cast.ToString(getValue("#os"))
 
 	// === App ID ===
+	// pay event uses "appid", app_vip_level_up uses "app_id"
 	appID := cast.ToString(getValue("appid"))
 	if appID == "" {
 		appID = cast.ToString(getValue("app_id"))
@@ -471,12 +471,10 @@ func (t *ThinkingDataSync) rowToEvent(headerIdx map[string]int, row []interface{
 		EventName: eventName, // Keep original TD event name
 
 		// Profile
-		Platform:    platform,
-		Country:     country,
-		DeviceType:  deviceType,
-		DeviceBrand: deviceBrand,
-		ServerID:    serverID,
-		Language:    language,
+		Platform: platform,
+		Country:  country,
+		Language: language,
+		OS:       os,
 
 		// Monetization
 		Revenue:        revenue,

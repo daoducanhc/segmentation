@@ -34,22 +34,29 @@ kafka:
 #   THINKINGDATA_VN_QUERY_URL, THINKINGDATA_VN_QUERY_TOKEN
 #   THINKINGDATA_GLOBAL_QUERY_URL, THINKINGDATA_GLOBAL_QUERY_TOKEN
 thinkingdata:
+  # Region-specific endpoints
+  vn:
+    event_view: "v_event_8"
+  global:
+    event_view: "v_event_9"
   
   # Common settings
-  event_view: "v_event_8"
   sync_interval_hours: 24
-  batch_size: 1000
-  lookback_days: 30
+  batch_size: 10000
+  lookback_days: 365
   timeout_seconds: 120
   
   # Event types to sync for Phase 1 criteria
   events:
-    # Login event - for user activity tracking
-    # Excludes loginprovider = 'gplay', 'fptplay'
-    - event_name: "login"
+    # Page view event - for user activity tracking
+    # Filters: page_name IN ('home_view', 'home_page')
+    - event_name: "app_page_view"
       fields:
-        - "appid"
-        - "loginprovider"
+        - "#zone_offset"
+        - "#os"
+        - "#system_language"
+        - "#country_code"
+        - "plt_type"
     
     # Pay event - for monetization tracking
     - event_name: "pay"

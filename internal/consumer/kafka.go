@@ -193,23 +193,24 @@ func (h *consumerHandler) parseMessage(msg []byte) (*data.Event, error) {
 
 	// Extract common properties
 	if props := tdEvent.Properties; props != nil {
-		if platform, ok := props["#os"].(string); ok {
-			event.Platform = platform
+		// Platform from plt_type (web_mobile, web_pc, app)
+		if pltType, ok := props["plt_type"].(string); ok {
+			event.Platform = pltType
 		}
-		if country, ok := props["#country"].(string); ok {
+		// Country from #country_code
+		if country, ok := props["#country_code"].(string); ok {
 			event.Country = country
 		}
-		if deviceType, ok := props["device_type"].(string); ok {
-			event.DeviceType = deviceType
+		// OS from #os
+		if os, ok := props["#os"].(string); ok {
+			event.OS = os
 		}
-		if deviceBrand, ok := props["device_brand"].(string); ok {
-			event.DeviceBrand = deviceBrand
-		}
-		if serverID, ok := props["server_id"].(string); ok {
-			event.ServerID = serverID
-		}
-		if language, ok := props["#language"].(string); ok {
-			event.Language = language
+		// Language from #system_language (first 2 chars)
+		if lang, ok := props["#system_language"].(string); ok {
+			if len(lang) > 2 {
+				lang = lang[:2]
+			}
+			event.Language = lang
 		}
 		if appID, ok := props["appid"].(string); ok {
 			event.AppID = appID

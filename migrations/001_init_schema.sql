@@ -13,11 +13,10 @@ CREATE DATABASE IF NOT EXISTS segmentation;
 CREATE TABLE IF NOT EXISTS segmentation.users
 (
     user_id String,
-    platform LowCardinality(String),           -- 'ios', 'android', 'web'
+    platform LowCardinality(String),           -- 'web_mobile', 'web_pc', 'app'
     country LowCardinality(String),
     language LowCardinality(String),
-    device_type LowCardinality(String),
-    app_version String,
+    os LowCardinality(String),                 -- Operating system (iOS, Android, etc.)
     
     -- User lifecycle dates
     first_seen_at DateTime64(3),
@@ -65,22 +64,20 @@ CREATE TABLE IF NOT EXISTS segmentation.events
 (
     user_id String,
     app_id LowCardinality(String),            -- Game/app identifier
-    event_name LowCardinality(String),        -- e.g., 'login', 'iapPurchasedItem', 'iapVipLevelUp'
+    event_name LowCardinality(String),        -- e.g., 'app_page_view', 'pay', 'app_vip_level_up'
     event_time DateTime64(3),
     
     -- Profile/Demographic (for profile criteria)
-    platform LowCardinality(String) DEFAULT '',      -- 'ios', 'android', 'web'
-    country LowCardinality(String) DEFAULT '',       -- Country code
-    device_type LowCardinality(String) DEFAULT '',   -- 'phone', 'tablet', 'pc'
-    device_brand LowCardinality(String) DEFAULT '',  -- 'Apple', 'Samsung', etc.
-    server_id LowCardinality(String) DEFAULT '',     -- Game server
-    language LowCardinality(String) DEFAULT '',      -- User language
+    platform LowCardinality(String) DEFAULT '',      -- 'web_mobile', 'web_pc', 'app' (from plt_type)
+    country LowCardinality(String) DEFAULT '',       -- Country code (from #country_code)
+    language LowCardinality(String) DEFAULT '',      -- User language (from #system_language[:2])
+    os LowCardinality(String) DEFAULT '',            -- Operating system (from #os)
     
     -- Monetization (for PU, RFM criteria)
     revenue Float64 DEFAULT 0,                       -- Payment amount (VND or base currency)
     currency LowCardinality(String) DEFAULT '',      -- Original currency
     payment_channel LowCardinality(String) DEFAULT '', -- 'webshop', 'google', '3rd_party', 'apple'
-    vip_level UInt8 DEFAULT 0,                       -- Current VIP level (from iapVipLevelUp)
+    vip_level UInt8 DEFAULT 0,                       -- Current VIP level (from app_vip_level_up)
     
     -- Flexible storage for other event-specific data
     properties String DEFAULT '{}',
@@ -117,9 +114,8 @@ CREATE TABLE IF NOT EXISTS segmentation.user_daily_activity
     -- Profile (latest per day)
     platform LowCardinality(String),
     country LowCardinality(String),
-    device_type LowCardinality(String),
-    device_brand LowCardinality(String),
-    server_id LowCardinality(String),
+    language LowCardinality(String),
+    os LowCardinality(String),
     
     -- Activity metrics
     login_count UInt32,                       -- For activity criteria
@@ -151,10 +147,9 @@ AS SELECT
     toDate(e.event_time) AS activity_date,
     any(e.platform) AS platform,
     any(e.country) AS country,
-    any(e.device_type) AS device_type,
-    any(e.device_brand) AS device_brand,
-    any(e.server_id) AS server_id,
-    toUInt32(countIf(e.event_name = 'login')) AS login_count,
+    any(e.language) AS language,
+    any(e.os) AS os,
+    toUInt32(countIf(e.event_name = 'app_page_view')) AS login_count,
     toUInt32(count()) AS event_count,
     sum(e.revenue) AS revenue,
     toUInt32(countIf(e.revenue > 0)) AS purchase_count,
@@ -428,9 +423,8 @@ SELECT
     app_id,
     argMax(platform, activity_date) as platform,
     argMax(country, activity_date) as country,
-    argMax(device_type, activity_date) as device_type,
-    argMax(device_brand, activity_date) as device_brand,
-    argMax(server_id, activity_date) as server_id,
+    argMax(language, activity_date) as language,
+    argMax(os, activity_date) as os,
     min(activity_date) as first_active_date,
     max(activity_date) as last_active_date,
     dateDiff('day', min(activity_date), today()) as account_age_days

@@ -84,7 +84,6 @@ type KafkaConsumer struct {
 type ThinkingData struct {
 	VN                *TDEndpoint    `yaml:"vn" json:"vn"`
 	Global            *TDEndpoint    `yaml:"global" json:"global"`
-	EventView         string         `yaml:"event_view" json:"event_view"`
 	SyncIntervalHours int32          `yaml:"sync_interval_hours" json:"sync_interval_hours"`
 	BatchSize         int32          `yaml:"batch_size" json:"batch_size"`
 	LookbackDays      int32          `yaml:"lookback_days" json:"lookback_days"`
@@ -96,6 +95,7 @@ type ThinkingData struct {
 type TDEndpoint struct {
 	QueryURL   string `yaml:"query_url" json:"query_url"`
 	QueryToken string `yaml:"query_token" json:"query_token"`
+	EventView  string `yaml:"event_view" json:"event_view"`
 }
 
 // TDEventSync defines how to sync a specific event type

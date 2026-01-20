@@ -71,16 +71,15 @@ func (r *AggregationRepo) RefreshUsersTable(ctx context.Context) error {
 
 	query := `
 		INSERT INTO segmentation.users
-		(user_id, platform, country, language, device_type, app_version,
+		(user_id, platform, country, language, os,
 		 first_seen_at, last_seen_at, is_paying_user, total_revenue, total_purchases,
 		 lifetime_events, created_at, updated_at, _version)
 		SELECT
 			user_id,
 			argMax(platform, activity_date) AS platform,
 			argMax(country, activity_date) AS country,
-			'' AS language,
-			argMax(device_type, activity_date) AS device_type,
-			'' AS app_version,
+			argMax(language, activity_date) AS language,
+			argMax(os, activity_date) AS os,
 			min(activity_date) AS first_seen_at,
 			max(activity_date) AS last_seen_at,
 			toUInt8(sum(revenue) > 0) AS is_paying_user,
