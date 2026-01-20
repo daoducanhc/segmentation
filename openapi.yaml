@@ -3,8 +3,54 @@
 
 openapi: 3.0.3
 info:
+servers:
+    - url: http://localhost:8000
+      description: Local development server
     title: SegmentService API
-    description: SegmentService provides segment management and evaluation
+    description: |-
+        SegmentService provides segment management and evaluation.
+
+         ## Enum Values Reference
+
+         ### SegmentType
+         - 1 = STATIC (Pre-computed user list)
+         - 2 = DYNAMIC (Computed on-demand based on conditions)
+         - 3 = COMPOSITE (Combines child segments)
+
+         ### LogicalOperator
+         - 1 = AND
+         - 2 = OR
+
+         ### ComparisonOperator
+         - 1 = EQ (equals)
+         - 2 = NEQ (not equals)
+         - 3 = GT (greater than)
+         - 4 = GTE (greater than or equals)
+         - 5 = LT (less than)
+         - 6 = LTE (less than or equals)
+         - 7 = IN (in list)
+         - 8 = NOT_IN (not in list)
+         - 9 = BETWEEN (between range)
+         - 10 = CONTAINS (contains substring)
+         - 11 = NOT_CONTAINS
+         - 12 = IS_NULL
+         - 13 = IS_NOT_NULL
+
+         ## User Condition Fields
+         - platform: web_mobile, web_pc, app
+         - country: Country code (VN, US, etc.)
+         - language: Language code (vi, en, etc.)
+         - os: Operating system (iOS, Android)
+         - total_revenue: Lifetime revenue
+         - total_purchases: Total purchase count
+         - max_vip_level: Maximum VIP level achieved
+         - first_seen: First activity timestamp
+         - last_seen: Last activity timestamp
+
+         ## Event Names
+         - app_page_view: User activity tracking
+         - pay: Payment/monetization events
+         - app_vip_level_up: VIP level changes
     version: 0.0.1
 paths:
     /v1/segments:
@@ -77,6 +123,25 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/api.segment.v1.PreviewSegmentResponse'
+    /v1/segments/upload:
+        post:
+            tags:
+                - SegmentService
+            description: UploadStaticSegment creates a static segment from uploaded user IDs
+            operationId: SegmentService_UploadStaticSegment
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.segment.v1.UploadStaticSegmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.UploadStaticSegmentResponse'
     /v1/segments/{id}:
         get:
             tags:
@@ -186,8 +251,86 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/api.segment.v1.EvaluateSegmentResponse'
+    /v1/segments/{id}/users:
+        post:
+            tags:
+                - SegmentService
+            description: AddUsersToStaticSegment adds users to an existing static segment
+            operationId: SegmentService_AddUsersToStaticSegment
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.segment.v1.AddUsersToStaticSegmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.AddUsersToStaticSegmentResponse'
+        delete:
+            tags:
+                - SegmentService
+            description: RemoveUsersFromStaticSegment removes users from a static segment
+            operationId: SegmentService_RemoveUsersFromStaticSegment
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: userIds
+                  in: query
+                  schema:
+                    type: array
+                    items:
+                        type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.RemoveUsersFromStaticSegmentResponse'
 components:
     schemas:
+        api.segment.v1.AddUsersToStaticSegmentRequest:
+            type: object
+            properties:
+                id:
+                    type: string
+                fileContent:
+                    type: string
+                fileName:
+                    type: string
+                headerName:
+                    type: string
+                userIds:
+                    type: array
+                    items:
+                        type: string
+            description: AddUsersToStaticSegmentRequest
+        api.segment.v1.AddUsersToStaticSegmentResponse:
+            type: object
+            properties:
+                usersAdded:
+                    type: integer
+                    format: int32
+                usersSkipped:
+                    type: integer
+                    format: int32
+                errors:
+                    type: array
+                    items:
+                        type: string
         api.segment.v1.ChildSegmentRef:
             type: object
             properties:
@@ -201,14 +344,17 @@ components:
             properties:
                 field:
                     type: string
+                    description: 'Field to filter on: platform, country, language, os, total_revenue, total_purchases, max_vip_level'
                 operator:
                     type: integer
+                    description: 'ComparisonOperator: 1=EQ, 2=NEQ, 3=GT, 4=GTE, 5=LT, 6=LTE, 7=IN, 8=NOT_IN'
                     format: enum
                 value:
                     $ref: '#/components/schemas/api.segment.v1.ConditionValue'
                 negated:
                     type: boolean
-            description: Condition represents a single filtering condition
+                    description: Apply NOT to this condition
+            description: 'Condition represents a single filtering condition. Example: {field: "platform", operator: 7(IN), value: {string_list: {values: ["app", "web_mobile"]}}}'
         api.segment.v1.ConditionGroup:
             type: object
             properties:
@@ -324,18 +470,22 @@ components:
             properties:
                 eventName:
                     type: string
+                    description: 'Event name: app_page_view, pay, app_vip_level_up'
                 lookbackDays:
                     type: integer
+                    description: Days to look back (e.g., 7 for A7, 30 for A30)
                     format: int32
                 countOperator:
                     type: integer
+                    description: ComparisonOperator for event count (4=GTE, 5=LT, etc.)
                     format: enum
                 countValue:
                     type: integer
+                    description: Value for count comparison
                     format: int64
                 propertyFilter:
                     $ref: '#/components/schemas/api.segment.v1.ConditionGroup'
-            description: EventCondition represents conditions on event data
+            description: 'EventCondition represents conditions on event data. Examples: - A7 users: event_name=app_page_view, lookback_days=7, count_operator=4(GTE), count_value=1 - Paid users: event_name=pay, lookback_days=30, count_operator=4(GTE), count_value=1 - High spenders: event_name=pay with property_filter on amount'
         api.segment.v1.GetSegmentResponse:
             type: object
             properties:
@@ -398,6 +548,12 @@ components:
                     format: int64
                 generatedSql:
                     type: string
+        api.segment.v1.RemoveUsersFromStaticSegmentResponse:
+            type: object
+            properties:
+                usersRemoved:
+                    type: integer
+                    format: int32
         api.segment.v1.Segment:
             type: object
             properties:
@@ -431,6 +587,7 @@ components:
             properties:
                 type:
                     type: integer
+                    description: 'SegmentType: 1=STATIC, 2=DYNAMIC, 3=COMPOSITE'
                     format: enum
                 userConditions:
                     $ref: '#/components/schemas/api.segment.v1.ConditionGroup'
@@ -438,9 +595,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/api.segment.v1.EventCondition'
-                    description: 'For DYNAMIC segments: conditions on events'
+                    description: 'For DYNAMIC segments: conditions on events (A7, A30, paid users, etc.)'
                 eventLogic:
                     type: integer
+                    description: 'LogicalOperator for combining event conditions: 1=AND, 2=OR'
                     format: enum
                 childSegments:
                     type: array
@@ -449,12 +607,13 @@ components:
                     description: 'For COMPOSITE segments: child segment references'
                 childLogic:
                     type: integer
+                    description: 'LogicalOperator for combining child segments: 1=AND, 2=OR'
                     format: enum
                 overallLogic:
                     type: integer
-                    description: Overall logic between user_conditions and event_conditions
+                    description: 'LogicalOperator between user_conditions and event_conditions: 1=AND, 2=OR'
                     format: enum
-            description: SegmentDefinition defines the complete segment logic
+            description: SegmentDefinition defines the complete segment logic. For DYNAMIC segments, use user_conditions and/or event_conditions. For COMPOSITE segments, use child_segments. For STATIC segments, use UploadStaticSegment API instead.
         api.segment.v1.StringList:
             type: object
             properties:
@@ -479,5 +638,40 @@ components:
             properties:
                 segment:
                     $ref: '#/components/schemas/api.segment.v1.Segment'
+        api.segment.v1.UploadStaticSegmentRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                description:
+                    type: string
+                fileContent:
+                    type: string
+                fileName:
+                    type: string
+                headerName:
+                    type: string
+                createdBy:
+                    type: string
+                userIds:
+                    type: array
+                    items:
+                        type: string
+            description: UploadStaticSegmentRequest - for creating static segment from file data
+        api.segment.v1.UploadStaticSegmentResponse:
+            type: object
+            properties:
+                segment:
+                    $ref: '#/components/schemas/api.segment.v1.Segment'
+                usersImported:
+                    type: integer
+                    format: int32
+                usersSkipped:
+                    type: integer
+                    format: int32
+                errors:
+                    type: array
+                    items:
+                        type: string
 tags:
     - name: SegmentService

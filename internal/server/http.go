@@ -7,6 +7,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/transport/http"
+	"github.com/go-kratos/swagger-api/openapiv2"
 
 	v1 "segmentation/api/segment/v1"
 	"segmentation/internal/conf"
@@ -33,6 +34,11 @@ func NewHTTPServer(c *conf.Server, segmentSvc *service.SegmentService, logger lo
 	}
 
 	srv := http.NewServer(opts...)
+
+	// Register Swagger UI at /q/swagger-ui
+	openAPIHandler := openapiv2.NewHandler()
+	srv.HandlePrefix("/q/", openAPIHandler)
+
 	v1.RegisterSegmentServiceHTTPServer(srv, segmentSvc)
 	return srv
 }

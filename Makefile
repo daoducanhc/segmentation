@@ -27,8 +27,18 @@ api:
 		--go_out=paths=source_relative:./api \
 		--go-http_out=paths=source_relative:./api \
 		--go-grpc_out=paths=source_relative:./api \
+		$(API_PROTO_FILES)
+
+.PHONY: swagger
+swagger:
+	protoc --proto_path=./api \
+		--proto_path=./third_party \
 		--openapi_out=fq_schema_naming=true,default_response=false:. \
 		$(API_PROTO_FILES)
+	@# Add server URL to openapi.yaml
+	@sed -i '/^info:/a\servers:\n    - url: http://localhost:8000\n      description: Local development server' openapi.yaml 2>/dev/null || \
+		sed -i '' '/^info:/a\'$$'\n''servers:'$$'\n''    - url: http://localhost:8000'$$'\n''      description: Local development server' openapi.yaml
+	@echo "Generated openapi.yaml - Swagger UI available at http://localhost:8000/q/swagger-ui"
 
 .PHONY: build
 build:
@@ -59,6 +69,7 @@ migrate-soft:
 lint:
 	golangci-lint run ./...
 
+
 .PHONY: clean
 clean:
 	rm -rf bin/
@@ -73,7 +84,8 @@ help:
 	@echo ''
 	@echo 'Targets:'
 	@echo '  init                Install dependencies and tools'
-	@echo '  api                 Generate API from proto files'
+	@echo '  api                 Generate Go code from proto files'
+	@echo '  swagger             Generate openapi.yaml from proto files'
 	@echo '  build               Build the binary'
 	@echo '  test                Run tests'
 	@echo '  run                 Run the server locally'
@@ -82,3 +94,5 @@ help:
 	@echo '  migrate-soft        Run migrations without dropping (may fail if exists)'
 	@echo '  lint                Run linter'
 	@echo '  clean               Clean build artifacts'
+	@echo ''
+	@echo 'Swagger UI: http://localhost:8000/q/swagger-ui (when server is running)'

@@ -647,16 +647,21 @@ func (x *DateRange) GetEnd() *timestamppb.Timestamp {
 	return nil
 }
 
-// Condition represents a single filtering condition
+// Condition represents a single filtering condition.
+// Example: {field: "platform", operator: 7(IN), value: {string_list: {values: ["app", "web_mobile"]}}}
 type Condition struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Field    string             `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`                                               // Field to filter on (e.g., "platform", "event_count")
-	Operator ComparisonOperator `protobuf:"varint,2,opt,name=operator,proto3,enum=api.segment.v1.ComparisonOperator" json:"operator,omitempty"` // Comparison operator
-	Value    *ConditionValue    `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`                                               // Value to compare against
-	Negated  bool               `protobuf:"varint,4,opt,name=negated,proto3" json:"negated,omitempty"`                                          // Apply NOT to this condition
+	// Field to filter on: platform, country, language, os, total_revenue, total_purchases, max_vip_level
+	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
+	// ComparisonOperator: 1=EQ, 2=NEQ, 3=GT, 4=GTE, 5=LT, 6=LTE, 7=IN, 8=NOT_IN
+	Operator ComparisonOperator `protobuf:"varint,2,opt,name=operator,proto3,enum=api.segment.v1.ComparisonOperator" json:"operator,omitempty"`
+	// Value to compare against
+	Value *ConditionValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	// Apply NOT to this condition
+	Negated bool `protobuf:"varint,4,opt,name=negated,proto3" json:"negated,omitempty"`
 }
 
 func (x *Condition) Reset() {
@@ -791,17 +796,26 @@ func (x *ConditionGroup) GetNegated() bool {
 	return false
 }
 
-// EventCondition represents conditions on event data
+// EventCondition represents conditions on event data.
+// Examples:
+// - A7 users: event_name=app_page_view, lookback_days=7, count_operator=4(GTE), count_value=1
+// - Paid users: event_name=pay, lookback_days=30, count_operator=4(GTE), count_value=1
+// - High spenders: event_name=pay with property_filter on amount
 type EventCondition struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	EventName      string             `protobuf:"bytes,1,opt,name=event_name,json=eventName,proto3" json:"event_name,omitempty"`                                                     // Event name to filter on
-	LookbackDays   int32              `protobuf:"varint,2,opt,name=lookback_days,json=lookbackDays,proto3" json:"lookback_days,omitempty"`                                           // Days to look back (e.g., 7 for A7, 30 for A30)
-	CountOperator  ComparisonOperator `protobuf:"varint,3,opt,name=count_operator,json=countOperator,proto3,enum=api.segment.v1.ComparisonOperator" json:"count_operator,omitempty"` // Operator for event count comparison
-	CountValue     int64              `protobuf:"varint,4,opt,name=count_value,json=countValue,proto3" json:"count_value,omitempty"`                                                 // Value for count comparison
-	PropertyFilter *ConditionGroup    `protobuf:"bytes,5,opt,name=property_filter,json=propertyFilter,proto3" json:"property_filter,omitempty"`                                      // Additional filters on event properties
+	// Event name: app_page_view, pay, app_vip_level_up
+	EventName string `protobuf:"bytes,1,opt,name=event_name,json=eventName,proto3" json:"event_name,omitempty"`
+	// Days to look back (e.g., 7 for A7, 30 for A30)
+	LookbackDays int32 `protobuf:"varint,2,opt,name=lookback_days,json=lookbackDays,proto3" json:"lookback_days,omitempty"`
+	// ComparisonOperator for event count (4=GTE, 5=LT, etc.)
+	CountOperator ComparisonOperator `protobuf:"varint,3,opt,name=count_operator,json=countOperator,proto3,enum=api.segment.v1.ComparisonOperator" json:"count_operator,omitempty"`
+	// Value for count comparison
+	CountValue int64 `protobuf:"varint,4,opt,name=count_value,json=countValue,proto3" json:"count_value,omitempty"`
+	// Additional filters on event properties
+	PropertyFilter *ConditionGroup `protobuf:"bytes,5,opt,name=property_filter,json=propertyFilter,proto3" json:"property_filter,omitempty"`
 }
 
 func (x *EventCondition) Reset() {
@@ -927,22 +941,28 @@ func (x *ChildSegmentRef) GetNegated() bool {
 	return false
 }
 
-// SegmentDefinition defines the complete segment logic
+// SegmentDefinition defines the complete segment logic.
+// For DYNAMIC segments, use user_conditions and/or event_conditions.
+// For COMPOSITE segments, use child_segments.
+// For STATIC segments, use UploadStaticSegment API instead.
 type SegmentDefinition struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// SegmentType: 1=STATIC, 2=DYNAMIC, 3=COMPOSITE
 	Type SegmentType `protobuf:"varint,1,opt,name=type,proto3,enum=api.segment.v1.SegmentType" json:"type,omitempty"`
-	// For DYNAMIC segments: conditions on user attributes
+	// For DYNAMIC segments: conditions on user attributes (platform, country, etc.)
 	UserConditions *ConditionGroup `protobuf:"bytes,2,opt,name=user_conditions,json=userConditions,proto3" json:"user_conditions,omitempty"`
-	// For DYNAMIC segments: conditions on events
+	// For DYNAMIC segments: conditions on events (A7, A30, paid users, etc.)
 	EventConditions []*EventCondition `protobuf:"bytes,3,rep,name=event_conditions,json=eventConditions,proto3" json:"event_conditions,omitempty"`
-	EventLogic      LogicalOperator   `protobuf:"varint,4,opt,name=event_logic,json=eventLogic,proto3,enum=api.segment.v1.LogicalOperator" json:"event_logic,omitempty"` // How to combine event conditions
+	// LogicalOperator for combining event conditions: 1=AND, 2=OR
+	EventLogic LogicalOperator `protobuf:"varint,4,opt,name=event_logic,json=eventLogic,proto3,enum=api.segment.v1.LogicalOperator" json:"event_logic,omitempty"`
 	// For COMPOSITE segments: child segment references
 	ChildSegments []*ChildSegmentRef `protobuf:"bytes,5,rep,name=child_segments,json=childSegments,proto3" json:"child_segments,omitempty"`
-	ChildLogic    LogicalOperator    `protobuf:"varint,6,opt,name=child_logic,json=childLogic,proto3,enum=api.segment.v1.LogicalOperator" json:"child_logic,omitempty"` // How to combine child segments (AND/OR)
-	// Overall logic between user_conditions and event_conditions
+	// LogicalOperator for combining child segments: 1=AND, 2=OR
+	ChildLogic LogicalOperator `protobuf:"varint,6,opt,name=child_logic,json=childLogic,proto3,enum=api.segment.v1.LogicalOperator" json:"child_logic,omitempty"`
+	// LogicalOperator between user_conditions and event_conditions: 1=AND, 2=OR
 	OverallLogic LogicalOperator `protobuf:"varint,7,opt,name=overall_logic,json=overallLogic,proto3,enum=api.segment.v1.LogicalOperator" json:"overall_logic,omitempty"`
 }
 

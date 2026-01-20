@@ -7,7 +7,49 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "segmentation/api/segment/v1;v1";
 
-// SegmentService provides segment management and evaluation
+// SegmentService provides segment management and evaluation.
+//
+// ## Enum Values Reference
+//
+// ### SegmentType
+// - 1 = STATIC (Pre-computed user list)
+// - 2 = DYNAMIC (Computed on-demand based on conditions)
+// - 3 = COMPOSITE (Combines child segments)
+//
+// ### LogicalOperator
+// - 1 = AND
+// - 2 = OR
+//
+// ### ComparisonOperator
+// - 1 = EQ (equals)
+// - 2 = NEQ (not equals)
+// - 3 = GT (greater than)
+// - 4 = GTE (greater than or equals)
+// - 5 = LT (less than)
+// - 6 = LTE (less than or equals)
+// - 7 = IN (in list)
+// - 8 = NOT_IN (not in list)
+// - 9 = BETWEEN (between range)
+// - 10 = CONTAINS (contains substring)
+// - 11 = NOT_CONTAINS
+// - 12 = IS_NULL
+// - 13 = IS_NOT_NULL
+//
+// ## User Condition Fields
+// - platform: web_mobile, web_pc, app
+// - country: Country code (VN, US, etc.)
+// - language: Language code (vi, en, etc.)
+// - os: Operating system (iOS, Android)
+// - total_revenue: Lifetime revenue
+// - total_purchases: Total purchase count
+// - max_vip_level: Maximum VIP level achieved
+// - first_seen: First activity timestamp
+// - last_seen: Last activity timestamp
+//
+// ## Event Names
+// - app_page_view: User activity tracking
+// - pay: Payment/monetization events
+// - app_vip_level_up: VIP level changes
 service SegmentService {
   // CreateSegment creates a new segment definition
   rpc CreateSegment(CreateSegmentRequest) returns (CreateSegmentResponse) {
@@ -164,12 +206,17 @@ message DateRange {
   google.protobuf.Timestamp end = 2;
 }
 
-// Condition represents a single filtering condition
+// Condition represents a single filtering condition.
+// Example: {field: "platform", operator: 7(IN), value: {string_list: {values: ["app", "web_mobile"]}}}
 message Condition {
-  string field = 1; // Field to filter on (e.g., "platform", "event_count")
-  ComparisonOperator operator = 2; // Comparison operator
-  ConditionValue value = 3; // Value to compare against
-  bool negated = 4; // Apply NOT to this condition
+  // Field to filter on: platform, country, language, os, total_revenue, total_purchases, max_vip_level
+  string field = 1;
+  // ComparisonOperator: 1=EQ, 2=NEQ, 3=GT, 4=GTE, 5=LT, 6=LTE, 7=IN, 8=NOT_IN
+  ComparisonOperator operator = 2;
+  // Value to compare against
+  ConditionValue value = 3;
+  // Apply NOT to this condition
+  bool negated = 4;
 }
 
 // ConditionGroup represents a group of conditions combined with a logical operator
@@ -180,13 +227,22 @@ message ConditionGroup {
   bool negated = 4; // Apply NOT to entire group
 }
 
-// EventCondition represents conditions on event data
+// EventCondition represents conditions on event data.
+// Examples:
+// - A7 users: event_name=app_page_view, lookback_days=7, count_operator=4(GTE), count_value=1
+// - Paid users: event_name=pay, lookback_days=30, count_operator=4(GTE), count_value=1
+// - High spenders: event_name=pay with property_filter on amount
 message EventCondition {
-  string event_name = 1; // Event name to filter on
-  int32 lookback_days = 2; // Days to look back (e.g., 7 for A7, 30 for A30)
-  ComparisonOperator count_operator = 3; // Operator for event count comparison
-  int64 count_value = 4; // Value for count comparison
-  ConditionGroup property_filter = 5; // Additional filters on event properties
+  // Event name: app_page_view, pay, app_vip_level_up
+  string event_name = 1;
+  // Days to look back (e.g., 7 for A7, 30 for A30)
+  int32 lookback_days = 2;
+  // ComparisonOperator for event count (4=GTE, 5=LT, etc.)
+  ComparisonOperator count_operator = 3;
+  // Value for count comparison
+  int64 count_value = 4;
+  // Additional filters on event properties
+  ConditionGroup property_filter = 5;
 }
 
 // ChildSegmentRef references a child segment for composite segments
@@ -195,22 +251,28 @@ message ChildSegmentRef {
   bool negated = 2; // Apply NOT to child segment result
 }
 
-// SegmentDefinition defines the complete segment logic
+// SegmentDefinition defines the complete segment logic.
+// For DYNAMIC segments, use user_conditions and/or event_conditions.
+// For COMPOSITE segments, use child_segments.
+// For STATIC segments, use UploadStaticSegment API instead.
 message SegmentDefinition {
+  // SegmentType: 1=STATIC, 2=DYNAMIC, 3=COMPOSITE
   SegmentType type = 1;
   
-  // For DYNAMIC segments: conditions on user attributes
+  // For DYNAMIC segments: conditions on user attributes (platform, country, etc.)
   ConditionGroup user_conditions = 2;
   
-  // For DYNAMIC segments: conditions on events
+  // For DYNAMIC segments: conditions on events (A7, A30, paid users, etc.)
   repeated EventCondition event_conditions = 3;
-  LogicalOperator event_logic = 4; // How to combine event conditions
+  // LogicalOperator for combining event conditions: 1=AND, 2=OR
+  LogicalOperator event_logic = 4;
   
   // For COMPOSITE segments: child segment references
   repeated ChildSegmentRef child_segments = 5;
-  LogicalOperator child_logic = 6; // How to combine child segments (AND/OR)
+  // LogicalOperator for combining child segments: 1=AND, 2=OR
+  LogicalOperator child_logic = 6;
   
-  // Overall logic between user_conditions and event_conditions
+  // LogicalOperator between user_conditions and event_conditions: 1=AND, 2=OR
   LogicalOperator overall_logic = 7;
 }
 
