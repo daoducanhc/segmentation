@@ -18,6 +18,7 @@ import (
 	"segmentation/internal/engine"
 	"segmentation/internal/server"
 	"segmentation/internal/service"
+	"segmentation/pkg/configx"
 )
 
 var flagconf string
@@ -29,7 +30,6 @@ func init() {
 func main() {
 	flag.Parse()
 
-	// Logger
 	logger := log.With(log.NewStdLogger(os.Stdout),
 		"ts", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,
@@ -53,6 +53,22 @@ func main() {
 		log.NewHelper(logger).Fatalf("failed to scan config: %v", err)
 	}
 
+	// Load ThinkingData URLs from environment variables
+	if bc.ThinkingData != nil {
+		if bc.ThinkingData.VN == nil {
+			bc.ThinkingData.VN = &conf.TDEndpoint{}
+		}
+		if bc.ThinkingData.Global == nil {
+			bc.ThinkingData.Global = &conf.TDEndpoint{}
+		}
+		bc.ThinkingData.VN.QueryURL = configx.GetEnvOrString("THINKINGDATA_VN_QUERY_URL", "")
+		bc.ThinkingData.VN.QueryToken = configx.GetEnvOrString("THINKINGDATA_VN_QUERY_TOKEN", "")
+		bc.ThinkingData.Global.QueryURL = configx.GetEnvOrString("THINKINGDATA_GLOBAL_QUERY_URL", "")
+		bc.ThinkingData.Global.QueryToken = configx.GetEnvOrString("THINKINGDATA_GLOBAL_QUERY_TOKEN", "")
+
+		log.NewHelper(logger).Infof("TD VN: url=%s, token_len=%d", bc.ThinkingData.VN.QueryURL, len(bc.ThinkingData.VN.QueryToken))
+	}
+
 	// Initialize data layer
 	dataInstance, cleanup, err := data.NewData(bc.Data, logger)
 	if err != nil {
@@ -64,6 +80,7 @@ func main() {
 	segmentRepo := data.NewSegmentRepo(dataInstance, logger)
 	userRepo := data.NewUserRepo(dataInstance, logger)
 	eventRepo := data.NewEventRepo(dataInstance, logger)
+	aggregationRepo := data.NewAggregationRepo(dataInstance, logger)
 
 	// Initialize engine
 	sqlGenerator := engine.NewSQLGenerator()
@@ -86,19 +103,10 @@ func main() {
 		}
 	}
 
-	// Initialize MySQL sync
-	var mysqlSync *consumer.MySQLSync
-	if bc.MySQL != nil && bc.MySQL.DSN != "" {
-		mysqlSync, err = consumer.NewMySQLSync(bc.MySQL, userRepo, logger)
-		if err != nil {
-			log.NewHelper(logger).Warnf("failed to create MySQL sync: %v", err)
-		}
-	}
-
 	// Initialize ThinkingData sync
 	var tdSync *consumer.ThinkingDataSync
 	if bc.ThinkingData != nil && len(bc.ThinkingData.Events) > 0 {
-		tdSync = consumer.NewThinkingDataSync(bc.ThinkingData, eventRepo, logger)
+		tdSync = consumer.NewThinkingDataSync(bc.ThinkingData, eventRepo, aggregationRepo, logger)
 	}
 
 	// Create Kratos app
@@ -123,14 +131,6 @@ func main() {
 		defer kafkaConsumer.Stop()
 	}
 
-	if mysqlSync != nil {
-		if err := mysqlSync.Start(ctx); err != nil {
-			log.NewHelper(logger).Errorf("failed to start MySQL sync: %v", err)
-		}
-		defer mysqlSync.Stop()
-	}
-
-	// Start ThinkingData sync
 	if tdSync != nil {
 		if err := tdSync.Start(ctx); err != nil {
 			log.NewHelper(logger).Errorf("failed to start ThinkingData sync: %v", err)
@@ -147,7 +147,6 @@ func main() {
 		app.Stop()
 	}()
 
-	// Run app
 	if err := app.Run(); err != nil {
 		log.NewHelper(logger).Fatalf("failed to run app: %v", err)
 	}

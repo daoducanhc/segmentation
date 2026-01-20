@@ -68,6 +68,29 @@ service SegmentService {
       get: "/v1/segments/{id}/count"
     };
   }
+
+  // UploadStaticSegment creates a static segment from uploaded user IDs
+  rpc UploadStaticSegment(UploadStaticSegmentRequest) returns (UploadStaticSegmentResponse) {
+    option (google.api.http) = {
+      post: "/v1/segments/upload"
+      body: "*"
+    };
+  }
+
+  // AddUsersToStaticSegment adds users to an existing static segment
+  rpc AddUsersToStaticSegment(AddUsersToStaticSegmentRequest) returns (AddUsersToStaticSegmentResponse) {
+    option (google.api.http) = {
+      post: "/v1/segments/{id}/users"
+      body: "*"
+    };
+  }
+
+  // RemoveUsersFromStaticSegment removes users from a static segment
+  rpc RemoveUsersFromStaticSegment(RemoveUsersFromStaticSegmentRequest) returns (RemoveUsersFromStaticSegmentResponse) {
+    option (google.api.http) = {
+      delete: "/v1/segments/{id}/users"
+    };
+  }
 }
 
 // LogicalOperator defines the logical operator for combining conditions
@@ -296,4 +319,47 @@ message GetSegmentUserCountRequest {
 message GetSegmentUserCountResponse {
   int64 count = 1;
   google.protobuf.Timestamp counted_at = 2;
+}
+
+// UploadStaticSegmentRequest - for creating static segment from file data
+message UploadStaticSegmentRequest {
+  string name = 1; // Required: Segment name
+  string description = 2; // Optional: Segment description
+  string file_content = 3; // Base64 encoded file content
+  string file_name = 4; // File name with extension (e.g. "users.csv", "data.xlsx")
+  string header_name = 5; // Required: Column name containing user IDs
+  string created_by = 6; // Optional: Creator identifier
+  repeated string user_ids = 7; // Alternative: direct list of user IDs (instead of file)
+}
+
+message UploadStaticSegmentResponse {
+  Segment segment = 1;
+  int32 users_imported = 2; // Number of users successfully imported
+  int32 users_skipped = 3; // Number of invalid/duplicate users skipped
+  repeated string errors = 4; // Any parsing errors
+}
+
+// AddUsersToStaticSegmentRequest
+message AddUsersToStaticSegmentRequest {
+  string id = 1; // Required: Segment ID
+  string file_content = 2; // Base64 encoded file content
+  string file_name = 3; // File name with extension (e.g. "users.csv")
+  string header_name = 4; // Required: Column name containing user IDs
+  repeated string user_ids = 5; // Alternative: direct list of user IDs (instead of file)
+}
+
+message AddUsersToStaticSegmentResponse {
+  int32 users_added = 1;
+  int32 users_skipped = 2;
+  repeated string errors = 3;
+}
+
+// RemoveUsersFromStaticSegmentRequest
+message RemoveUsersFromStaticSegmentRequest {
+  string id = 1; // Segment ID
+  repeated string user_ids = 2; // User IDs to remove
+}
+
+message RemoveUsersFromStaticSegmentResponse {
+  int32 users_removed = 1;
 }

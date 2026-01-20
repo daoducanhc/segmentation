@@ -423,6 +423,105 @@ func (r *SegmentRepo) RecordEvaluation(ctx context.Context, segmentID string, us
 	return r.data.ExecuteExec(ctx, query, segmentID, userCount, executionMs, generatedSQL, status, errorMsg, time.Now())
 }
 
+// AddUsersToStaticSegment adds users to a static segment
+func (r *SegmentRepo) AddUsersToStaticSegment(ctx context.Context, segmentID string, userIDs []string) (added, skipped int, err error) {
+	if len(userIDs) == 0 {
+		return 0, 0, nil
+	}
+
+	// Get existing users to avoid duplicates
+	existingQuery := `SELECT user_id FROM segmentation.segment_results WHERE segment_id = ?`
+	rows, err := r.data.ExecuteQuery(ctx, existingQuery, segmentID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get existing users: %w", err)
+	}
+	defer rows.Close()
+
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return 0, 0, fmt.Errorf("failed to scan user_id: %w", err)
+		}
+		existing[uid] = true
+	}
+
+	// Filter out duplicates
+	var newUsers []string
+	for _, uid := range userIDs {
+		if !existing[uid] {
+			newUsers = append(newUsers, uid)
+			existing[uid] = true // Mark as seen for this batch
+		} else {
+			skipped++
+		}
+	}
+
+	if len(newUsers) == 0 {
+		return 0, skipped, nil
+	}
+
+	// Insert new users
+	evaluationID := uuid.New().String()
+	insertQuery := `INSERT INTO segmentation.segment_results (segment_id, user_id, added_at, evaluation_id)`
+
+	b, err := r.data.Batch(ctx, insertQuery)
+	if err != nil {
+		return 0, skipped, fmt.Errorf("failed to prepare batch: %w", err)
+	}
+
+	for _, uid := range newUsers {
+		if err := b.Append(segmentID, uid, time.Now(), evaluationID); err != nil {
+			return 0, skipped, fmt.Errorf("failed to append to batch: %w", err)
+		}
+	}
+
+	if err := b.Send(); err != nil {
+		return 0, skipped, fmt.Errorf("failed to send batch: %w", err)
+	}
+
+	// Update cached count
+	countQuery := `SELECT count() FROM segmentation.segment_results WHERE segment_id = ?`
+	var count uint64
+	if err := r.data.QueryRow(ctx, countQuery, segmentID).Scan(&count); err == nil {
+		r.UpdateEvaluationMetadata(ctx, segmentID, int64(count), time.Now())
+	}
+
+	return len(newUsers), skipped, nil
+}
+
+// RemoveUsersFromStaticSegment removes users from a static segment
+func (r *SegmentRepo) RemoveUsersFromStaticSegment(ctx context.Context, segmentID string, userIDs []string) (removed int, err error) {
+	if len(userIDs) == 0 {
+		return 0, nil
+	}
+
+	// Delete users one by one (ClickHouse ALTER TABLE DELETE doesn't support IN with parameters well)
+	for _, uid := range userIDs {
+		deleteQuery := `ALTER TABLE segmentation.segment_results DELETE WHERE segment_id = ? AND user_id = ?`
+		if err := r.data.ExecuteExec(ctx, deleteQuery, segmentID, uid); err != nil {
+			r.log.Warnf("failed to delete user %s from segment %s: %v", uid, segmentID, err)
+			continue
+		}
+		removed++
+	}
+
+	// Update cached count
+	countQuery := `SELECT count() FROM segmentation.segment_results WHERE segment_id = ?`
+	var count uint64
+	if err := r.data.QueryRow(ctx, countQuery, segmentID).Scan(&count); err == nil {
+		r.UpdateEvaluationMetadata(ctx, segmentID, int64(count), time.Now())
+	}
+
+	return removed, nil
+}
+
+// ClearStaticSegmentUsers removes all users from a static segment
+func (r *SegmentRepo) ClearStaticSegmentUsers(ctx context.Context, segmentID string) error {
+	clearQuery := `ALTER TABLE segmentation.segment_results DELETE WHERE segment_id = ?`
+	return r.data.ExecuteExec(ctx, clearQuery, segmentID)
+}
+
 func boolToUint8(b bool) uint8 {
 	if b {
 		return 1

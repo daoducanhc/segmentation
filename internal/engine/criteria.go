@@ -201,6 +201,100 @@ func (c *CriteriaLibrary) Country(country string) *Criterion {
 	}
 }
 
+// ========== VIP Level Criteria ==========
+
+// VIPLevel returns a criterion for users at a specific VIP level for an app
+func (c *CriteriaLibrary) VIPLevel(appID string, level uint8) *Criterion {
+	return &Criterion{
+		Name:        "VIP_LEVEL",
+		Description: fmt.Sprintf("Users at VIP level %d for app %s", level, appID),
+		EventCondition: &v1.EventCondition{
+			EventName:    "app_vip_level_up",
+			LookbackDays: 365, // Look at historical VIP data
+			PropertyFilter: &v1.ConditionGroup{
+				Operator: v1.LogicalOperator_LOGICAL_OPERATOR_AND,
+				Conditions: []*v1.Condition{
+					{
+						Field:    "app_id",
+						Operator: v1.ComparisonOperator_COMPARISON_OPERATOR_EQ,
+						Value:    &v1.ConditionValue{Value: &v1.ConditionValue_StringValue{StringValue: appID}},
+					},
+					{
+						Field:    "vip_level",
+						Operator: v1.ComparisonOperator_COMPARISON_OPERATOR_EQ,
+						Value:    &v1.ConditionValue{Value: &v1.ConditionValue_IntValue{IntValue: int64(level)}},
+					},
+				},
+			},
+			CountOperator: v1.ComparisonOperator_COMPARISON_OPERATOR_GTE,
+			CountValue:    1,
+		},
+	}
+}
+
+// VIPLevelAtLeast returns a criterion for users at or above a specific VIP level for an app
+func (c *CriteriaLibrary) VIPLevelAtLeast(appID string, minLevel uint8) *Criterion {
+	return &Criterion{
+		Name:        "VIP_LEVEL_GTE",
+		Description: fmt.Sprintf("Users at VIP level >= %d for app %s", minLevel, appID),
+		EventCondition: &v1.EventCondition{
+			EventName:    "app_vip_level_up",
+			LookbackDays: 365,
+			PropertyFilter: &v1.ConditionGroup{
+				Operator: v1.LogicalOperator_LOGICAL_OPERATOR_AND,
+				Conditions: []*v1.Condition{
+					{
+						Field:    "app_id",
+						Operator: v1.ComparisonOperator_COMPARISON_OPERATOR_EQ,
+						Value:    &v1.ConditionValue{Value: &v1.ConditionValue_StringValue{StringValue: appID}},
+					},
+					{
+						Field:    "vip_level",
+						Operator: v1.ComparisonOperator_COMPARISON_OPERATOR_GTE,
+						Value:    &v1.ConditionValue{Value: &v1.ConditionValue_IntValue{IntValue: int64(minLevel)}},
+					},
+				},
+			},
+			CountOperator: v1.ComparisonOperator_COMPARISON_OPERATOR_GTE,
+			CountValue:    1,
+		},
+	}
+}
+
+// VIPLevelRange returns a criterion for users within a VIP level range for an app
+func (c *CriteriaLibrary) VIPLevelRange(appID string, minLevel, maxLevel uint8) *Criterion {
+	return &Criterion{
+		Name:        "VIP_LEVEL_RANGE",
+		Description: fmt.Sprintf("Users at VIP level %d-%d for app %s", minLevel, maxLevel, appID),
+		EventCondition: &v1.EventCondition{
+			EventName:    "app_vip_level_up",
+			LookbackDays: 365,
+			PropertyFilter: &v1.ConditionGroup{
+				Operator: v1.LogicalOperator_LOGICAL_OPERATOR_AND,
+				Conditions: []*v1.Condition{
+					{
+						Field:    "app_id",
+						Operator: v1.ComparisonOperator_COMPARISON_OPERATOR_EQ,
+						Value:    &v1.ConditionValue{Value: &v1.ConditionValue_StringValue{StringValue: appID}},
+					},
+					{
+						Field:    "vip_level",
+						Operator: v1.ComparisonOperator_COMPARISON_OPERATOR_GTE,
+						Value:    &v1.ConditionValue{Value: &v1.ConditionValue_IntValue{IntValue: int64(minLevel)}},
+					},
+					{
+						Field:    "vip_level",
+						Operator: v1.ComparisonOperator_COMPARISON_OPERATOR_LTE,
+						Value:    &v1.ConditionValue{Value: &v1.ConditionValue_IntValue{IntValue: int64(maxLevel)}},
+					},
+				},
+			},
+			CountOperator: v1.ComparisonOperator_COMPARISON_OPERATOR_GTE,
+			CountValue:    1,
+		},
+	}
+}
+
 // ========== Event Criteria ==========
 
 // EventPerformed returns a criterion for users who performed a specific event
@@ -496,6 +590,34 @@ func (c *CriteriaLibrary) GetCriteriaTemplates() map[string]*CriteriaTemplate {
 			Params: []ParamDefinition{
 				{Name: "event_name", Type: "string", Required: true, Description: "Event name"},
 				{Name: "days", Type: "int", Default: "30", Description: "Lookback days"},
+			},
+		},
+		"VIP_LEVEL": {
+			Name:        "VIP Level",
+			Description: "Users at a specific VIP level (per app)",
+			Type:        "VIP_LEVEL",
+			Params: []ParamDefinition{
+				{Name: "app_id", Type: "string", Required: true, Description: "App/Game ID"},
+				{Name: "level", Type: "int", Required: true, Description: "VIP level"},
+			},
+		},
+		"VIP_LEVEL_GTE": {
+			Name:        "VIP Level At Least",
+			Description: "Users at or above a specific VIP level (per app)",
+			Type:        "VIP_LEVEL_GTE",
+			Params: []ParamDefinition{
+				{Name: "app_id", Type: "string", Required: true, Description: "App/Game ID"},
+				{Name: "min_level", Type: "int", Required: true, Description: "Minimum VIP level"},
+			},
+		},
+		"VIP_LEVEL_RANGE": {
+			Name:        "VIP Level Range",
+			Description: "Users within a VIP level range (per app)",
+			Type:        "VIP_LEVEL_RANGE",
+			Params: []ParamDefinition{
+				{Name: "app_id", Type: "string", Required: true, Description: "App/Game ID"},
+				{Name: "min_level", Type: "int", Required: true, Description: "Minimum VIP level"},
+				{Name: "max_level", Type: "int", Required: true, Description: "Maximum VIP level"},
 			},
 		},
 	}

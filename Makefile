@@ -46,17 +46,14 @@ run:
 docker:
 	docker build -t segmentation:$(VERSION) .
 
-.PHONY: docker-compose-up
-docker-compose-up:
-	docker-compose up -d
-
-.PHONY: docker-compose-down
-docker-compose-down:
-	docker-compose down
-
 .PHONY: migrate
 migrate:
-	docker exec -i segmentation-clickhouse-1 clickhouse-client --multiline < ./migrations/001_init_schema.sql
+	docker exec -i mgp-clickhouse-local clickhouse-client --query "DROP DATABASE IF EXISTS segmentation"
+	docker exec -i mgp-clickhouse-local clickhouse-client --multiquery < ./migrations/001_init_schema.sql
+
+.PHONY: migrate-soft
+migrate-soft:
+	docker exec -i mgp-clickhouse-local clickhouse-client --multiquery < ./migrations/001_init_schema.sql
 
 .PHONY: lint
 lint:
@@ -81,8 +78,7 @@ help:
 	@echo '  test                Run tests'
 	@echo '  run                 Run the server locally'
 	@echo '  docker              Build Docker image'
-	@echo '  docker-compose-up   Start all services with docker-compose'
-	@echo '  docker-compose-down Stop all services'
-	@echo '  migrate             Run database migrations'
+	@echo '  migrate             Reset and run database migrations (drops DB first)'
+	@echo '  migrate-soft        Run migrations without dropping (may fail if exists)'
 	@echo '  lint                Run linter'
 	@echo '  clean               Clean build artifacts'

@@ -19,14 +19,17 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	SegmentService_CreateSegment_FullMethodName       = "/api.segment.v1.SegmentService/CreateSegment"
-	SegmentService_UpdateSegment_FullMethodName       = "/api.segment.v1.SegmentService/UpdateSegment"
-	SegmentService_GetSegment_FullMethodName          = "/api.segment.v1.SegmentService/GetSegment"
-	SegmentService_ListSegments_FullMethodName        = "/api.segment.v1.SegmentService/ListSegments"
-	SegmentService_DeleteSegment_FullMethodName       = "/api.segment.v1.SegmentService/DeleteSegment"
-	SegmentService_EvaluateSegment_FullMethodName     = "/api.segment.v1.SegmentService/EvaluateSegment"
-	SegmentService_PreviewSegment_FullMethodName      = "/api.segment.v1.SegmentService/PreviewSegment"
-	SegmentService_GetSegmentUserCount_FullMethodName = "/api.segment.v1.SegmentService/GetSegmentUserCount"
+	SegmentService_CreateSegment_FullMethodName                = "/api.segment.v1.SegmentService/CreateSegment"
+	SegmentService_UpdateSegment_FullMethodName                = "/api.segment.v1.SegmentService/UpdateSegment"
+	SegmentService_GetSegment_FullMethodName                   = "/api.segment.v1.SegmentService/GetSegment"
+	SegmentService_ListSegments_FullMethodName                 = "/api.segment.v1.SegmentService/ListSegments"
+	SegmentService_DeleteSegment_FullMethodName                = "/api.segment.v1.SegmentService/DeleteSegment"
+	SegmentService_EvaluateSegment_FullMethodName              = "/api.segment.v1.SegmentService/EvaluateSegment"
+	SegmentService_PreviewSegment_FullMethodName               = "/api.segment.v1.SegmentService/PreviewSegment"
+	SegmentService_GetSegmentUserCount_FullMethodName          = "/api.segment.v1.SegmentService/GetSegmentUserCount"
+	SegmentService_UploadStaticSegment_FullMethodName          = "/api.segment.v1.SegmentService/UploadStaticSegment"
+	SegmentService_AddUsersToStaticSegment_FullMethodName      = "/api.segment.v1.SegmentService/AddUsersToStaticSegment"
+	SegmentService_RemoveUsersFromStaticSegment_FullMethodName = "/api.segment.v1.SegmentService/RemoveUsersFromStaticSegment"
 )
 
 // SegmentServiceClient is the client API for SegmentService service.
@@ -49,6 +52,12 @@ type SegmentServiceClient interface {
 	PreviewSegment(ctx context.Context, in *PreviewSegmentRequest, opts ...grpc.CallOption) (*PreviewSegmentResponse, error)
 	// GetSegmentUserCount returns the count of users in a segment
 	GetSegmentUserCount(ctx context.Context, in *GetSegmentUserCountRequest, opts ...grpc.CallOption) (*GetSegmentUserCountResponse, error)
+	// UploadStaticSegment creates a static segment from uploaded user IDs
+	UploadStaticSegment(ctx context.Context, in *UploadStaticSegmentRequest, opts ...grpc.CallOption) (*UploadStaticSegmentResponse, error)
+	// AddUsersToStaticSegment adds users to an existing static segment
+	AddUsersToStaticSegment(ctx context.Context, in *AddUsersToStaticSegmentRequest, opts ...grpc.CallOption) (*AddUsersToStaticSegmentResponse, error)
+	// RemoveUsersFromStaticSegment removes users from a static segment
+	RemoveUsersFromStaticSegment(ctx context.Context, in *RemoveUsersFromStaticSegmentRequest, opts ...grpc.CallOption) (*RemoveUsersFromStaticSegmentResponse, error)
 }
 
 type segmentServiceClient struct {
@@ -131,6 +140,33 @@ func (c *segmentServiceClient) GetSegmentUserCount(ctx context.Context, in *GetS
 	return out, nil
 }
 
+func (c *segmentServiceClient) UploadStaticSegment(ctx context.Context, in *UploadStaticSegmentRequest, opts ...grpc.CallOption) (*UploadStaticSegmentResponse, error) {
+	out := new(UploadStaticSegmentResponse)
+	err := c.cc.Invoke(ctx, SegmentService_UploadStaticSegment_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *segmentServiceClient) AddUsersToStaticSegment(ctx context.Context, in *AddUsersToStaticSegmentRequest, opts ...grpc.CallOption) (*AddUsersToStaticSegmentResponse, error) {
+	out := new(AddUsersToStaticSegmentResponse)
+	err := c.cc.Invoke(ctx, SegmentService_AddUsersToStaticSegment_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *segmentServiceClient) RemoveUsersFromStaticSegment(ctx context.Context, in *RemoveUsersFromStaticSegmentRequest, opts ...grpc.CallOption) (*RemoveUsersFromStaticSegmentResponse, error) {
+	out := new(RemoveUsersFromStaticSegmentResponse)
+	err := c.cc.Invoke(ctx, SegmentService_RemoveUsersFromStaticSegment_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SegmentServiceServer is the server API for SegmentService service.
 // All implementations must embed UnimplementedSegmentServiceServer
 // for forward compatibility
@@ -151,6 +187,12 @@ type SegmentServiceServer interface {
 	PreviewSegment(context.Context, *PreviewSegmentRequest) (*PreviewSegmentResponse, error)
 	// GetSegmentUserCount returns the count of users in a segment
 	GetSegmentUserCount(context.Context, *GetSegmentUserCountRequest) (*GetSegmentUserCountResponse, error)
+	// UploadStaticSegment creates a static segment from uploaded user IDs
+	UploadStaticSegment(context.Context, *UploadStaticSegmentRequest) (*UploadStaticSegmentResponse, error)
+	// AddUsersToStaticSegment adds users to an existing static segment
+	AddUsersToStaticSegment(context.Context, *AddUsersToStaticSegmentRequest) (*AddUsersToStaticSegmentResponse, error)
+	// RemoveUsersFromStaticSegment removes users from a static segment
+	RemoveUsersFromStaticSegment(context.Context, *RemoveUsersFromStaticSegmentRequest) (*RemoveUsersFromStaticSegmentResponse, error)
 	mustEmbedUnimplementedSegmentServiceServer()
 }
 
@@ -181,6 +223,15 @@ func (UnimplementedSegmentServiceServer) PreviewSegment(context.Context, *Previe
 }
 func (UnimplementedSegmentServiceServer) GetSegmentUserCount(context.Context, *GetSegmentUserCountRequest) (*GetSegmentUserCountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSegmentUserCount not implemented")
+}
+func (UnimplementedSegmentServiceServer) UploadStaticSegment(context.Context, *UploadStaticSegmentRequest) (*UploadStaticSegmentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UploadStaticSegment not implemented")
+}
+func (UnimplementedSegmentServiceServer) AddUsersToStaticSegment(context.Context, *AddUsersToStaticSegmentRequest) (*AddUsersToStaticSegmentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddUsersToStaticSegment not implemented")
+}
+func (UnimplementedSegmentServiceServer) RemoveUsersFromStaticSegment(context.Context, *RemoveUsersFromStaticSegmentRequest) (*RemoveUsersFromStaticSegmentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveUsersFromStaticSegment not implemented")
 }
 func (UnimplementedSegmentServiceServer) mustEmbedUnimplementedSegmentServiceServer() {}
 
@@ -339,6 +390,60 @@ func _SegmentService_GetSegmentUserCount_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SegmentService_UploadStaticSegment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UploadStaticSegmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SegmentServiceServer).UploadStaticSegment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SegmentService_UploadStaticSegment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SegmentServiceServer).UploadStaticSegment(ctx, req.(*UploadStaticSegmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SegmentService_AddUsersToStaticSegment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddUsersToStaticSegmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SegmentServiceServer).AddUsersToStaticSegment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SegmentService_AddUsersToStaticSegment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SegmentServiceServer).AddUsersToStaticSegment(ctx, req.(*AddUsersToStaticSegmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SegmentService_RemoveUsersFromStaticSegment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveUsersFromStaticSegmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SegmentServiceServer).RemoveUsersFromStaticSegment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SegmentService_RemoveUsersFromStaticSegment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SegmentServiceServer).RemoveUsersFromStaticSegment(ctx, req.(*RemoveUsersFromStaticSegmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SegmentService_ServiceDesc is the grpc.ServiceDesc for SegmentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -377,6 +482,18 @@ var SegmentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSegmentUserCount",
 			Handler:    _SegmentService_GetSegmentUserCount_Handler,
+		},
+		{
+			MethodName: "UploadStaticSegment",
+			Handler:    _SegmentService_UploadStaticSegment_Handler,
+		},
+		{
+			MethodName: "AddUsersToStaticSegment",
+			Handler:    _SegmentService_AddUsersToStaticSegment_Handler,
+		},
+		{
+			MethodName: "RemoveUsersFromStaticSegment",
+			Handler:    _SegmentService_RemoveUsersFromStaticSegment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

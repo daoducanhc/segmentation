@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -10,6 +11,7 @@ import (
 	v1 "segmentation/api/segment/v1"
 	"segmentation/internal/data"
 	"segmentation/internal/engine"
+	"segmentation/pkg/fileparser"
 )
 
 // SegmentService implements the SegmentService gRPC service
@@ -237,4 +239,134 @@ func (s *SegmentService) toProtoSegment(seg *data.Segment) *v1.Segment {
 	}
 
 	return protoSeg
+}
+
+// UploadStaticSegment creates a static segment from uploaded user IDs
+func (s *SegmentService) UploadStaticSegment(ctx context.Context, req *v1.UploadStaticSegmentRequest) (*v1.UploadStaticSegmentResponse, error) {
+	var userIDs []string
+	var skipped int
+	var errors []string
+
+	// Parse user IDs from file or direct list
+	if req.FileContent != "" && req.HeaderName != "" {
+		result, err := fileparser.ParseFile(req.FileContent, req.FileName, req.HeaderName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse file: %w", err)
+		}
+		userIDs = result.UserIDs
+		skipped = result.Skipped
+		errors = result.Errors
+	} else if len(req.UserIds) > 0 {
+		result := fileparser.ParseUserIDList(req.UserIds)
+		userIDs = result.UserIDs
+		skipped = result.Skipped
+	} else {
+		return nil, fmt.Errorf("either file_content with header_name or user_ids must be provided")
+	}
+
+	if len(userIDs) == 0 {
+		return nil, fmt.Errorf("no valid user IDs found in the input")
+	}
+
+	// Create static segment definition
+	now := time.Now()
+	segment := &data.Segment{
+		Name:        req.Name,
+		Description: req.Description,
+		Definition: &v1.SegmentDefinition{
+			Type: v1.SegmentType_SEGMENT_TYPE_STATIC,
+		},
+		GeneratedSQL:  "", // Static segments don't have generated SQL
+		CreatedBy:     req.CreatedBy,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		IsActive:      true,
+		CachedCount:   int64(len(userIDs)),
+		LastEvaluated: &now,
+	}
+
+	// Create the segment
+	if err := s.segmentRepo.Create(ctx, segment); err != nil {
+		return nil, fmt.Errorf("failed to create segment: %w", err)
+	}
+
+	// Cache the user IDs
+	if err := s.segmentRepo.CacheResults(ctx, segment.ID, userIDs); err != nil {
+		return nil, fmt.Errorf("failed to cache user IDs: %w", err)
+	}
+
+	return &v1.UploadStaticSegmentResponse{
+		Segment:       s.toProtoSegment(segment),
+		UsersImported: int32(len(userIDs)),
+		UsersSkipped:  int32(skipped),
+		Errors:        errors,
+	}, nil
+}
+
+// AddUsersToStaticSegment adds users to an existing static segment
+func (s *SegmentService) AddUsersToStaticSegment(ctx context.Context, req *v1.AddUsersToStaticSegmentRequest) (*v1.AddUsersToStaticSegmentResponse, error) {
+	// Verify segment exists and is static
+	segment, err := s.segmentRepo.GetByID(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("segment not found: %w", err)
+	}
+
+	if segment.Definition == nil || segment.Definition.Type != v1.SegmentType_SEGMENT_TYPE_STATIC {
+		return nil, fmt.Errorf("segment %s is not a static segment", req.Id)
+	}
+
+	var userIDs []string
+	var skipped int
+	var errors []string
+
+	// Parse user IDs from file or direct list
+	if req.FileContent != "" && req.HeaderName != "" {
+		result, err := fileparser.ParseFile(req.FileContent, req.FileName, req.HeaderName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse file: %w", err)
+		}
+		userIDs = result.UserIDs
+		skipped = result.Skipped
+		errors = result.Errors
+	} else if len(req.UserIds) > 0 {
+		result := fileparser.ParseUserIDList(req.UserIds)
+		userIDs = result.UserIDs
+		skipped = result.Skipped
+	} else {
+		return nil, fmt.Errorf("either file_content with header_name or user_ids must be provided")
+	}
+
+	// Add users to segment
+	added, dbSkipped, err := s.segmentRepo.AddUsersToStaticSegment(ctx, req.Id, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add users: %w", err)
+	}
+
+	return &v1.AddUsersToStaticSegmentResponse{
+		UsersAdded:   int32(added),
+		UsersSkipped: int32(skipped + dbSkipped),
+		Errors:       errors,
+	}, nil
+}
+
+// RemoveUsersFromStaticSegment removes users from a static segment
+func (s *SegmentService) RemoveUsersFromStaticSegment(ctx context.Context, req *v1.RemoveUsersFromStaticSegmentRequest) (*v1.RemoveUsersFromStaticSegmentResponse, error) {
+	// Verify segment exists and is static
+	segment, err := s.segmentRepo.GetByID(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("segment not found: %w", err)
+	}
+
+	if segment.Definition == nil || segment.Definition.Type != v1.SegmentType_SEGMENT_TYPE_STATIC {
+		return nil, fmt.Errorf("segment %s is not a static segment", req.Id)
+	}
+
+	removed, err := s.segmentRepo.RemoveUsersFromStaticSegment(ctx, req.Id, req.UserIds)
+	if err != nil {
+		return nil, fmt.Errorf("failed to remove users: %w", err)
+	}
+
+	return &v1.RemoveUsersFromStaticSegmentResponse{
+		UsersRemoved: int32(removed),
+	}, nil
 }

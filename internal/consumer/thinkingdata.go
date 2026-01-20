@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/google/uuid"
 	"github.com/imroc/req/v3"
 	"github.com/spf13/cast"
 
@@ -17,19 +16,25 @@ import (
 	"segmentation/internal/data"
 )
 
+// TDResponseData contains the headers from ThinkingData response
+type TDResponseData struct {
+	Headers []string `json:"headers"`
+}
+
 // TDResponseHeader represents ThinkingData query response header
 type TDResponseHeader struct {
-	ReturnCode    int32    `json:"return_code"`
-	ReturnMessage string   `json:"return_message"`
-	Headers       []string `json:"headers"`
+	Data          TDResponseData `json:"data"`
+	ReturnCode    int32          `json:"return_code"`
+	ReturnMessage string         `json:"return_message"`
 }
 
 // ThinkingDataSync handles syncing events from ThinkingData to ClickHouse
 type ThinkingDataSync struct {
-	config    *conf.ThinkingData
-	eventRepo *data.EventRepo
-	logger    *log.Helper
-	client    *req.Client
+	config          *conf.ThinkingData
+	eventRepo       *data.EventRepo
+	aggregationRepo *data.AggregationRepo
+	logger          *log.Helper
+	client          *req.Client
 
 	mu           sync.RWMutex
 	lastSyncTime map[string]time.Time // per event type
@@ -38,19 +43,20 @@ type ThinkingDataSync struct {
 }
 
 // NewThinkingDataSync creates a new ThinkingData sync consumer
-func NewThinkingDataSync(config *conf.ThinkingData, eventRepo *data.EventRepo, logger log.Logger) *ThinkingDataSync {
+func NewThinkingDataSync(config *conf.ThinkingData, eventRepo *data.EventRepo, aggregationRepo *data.AggregationRepo, logger log.Logger) *ThinkingDataSync {
 	timeout := time.Duration(config.TimeoutSeconds) * time.Second
 	if timeout == 0 {
 		timeout = 60 * time.Second
 	}
 
 	return &ThinkingDataSync{
-		config:       config,
-		eventRepo:    eventRepo,
-		logger:       log.NewHelper(log.With(logger, "module", "consumer/thinkingdata")),
-		client:       req.C().SetTimeout(timeout),
-		lastSyncTime: make(map[string]time.Time),
-		stopChan:     make(chan struct{}),
+		config:          config,
+		eventRepo:       eventRepo,
+		aggregationRepo: aggregationRepo,
+		logger:          log.NewHelper(log.With(logger, "module", "consumer/thinkingdata")),
+		client:          req.C().SetTimeout(timeout),
+		lastSyncTime:    make(map[string]time.Time),
+		stopChan:        make(chan struct{}),
 	}
 }
 
@@ -60,9 +66,7 @@ func (t *ThinkingDataSync) Start(ctx context.Context) error {
 
 	// Initial sync with lookback
 	for _, eventConf := range t.config.Events {
-		if eventConf.Enabled {
-			t.lastSyncTime[eventConf.EventName] = time.Now().AddDate(0, 0, -int(t.config.LookbackDays))
-		}
+		t.lastSyncTime[eventConf.EventName] = time.Now().AddDate(0, 0, -int(t.config.LookbackDays))
 	}
 
 	// Start periodic sync
@@ -82,7 +86,7 @@ func (t *ThinkingDataSync) Stop() {
 func (t *ThinkingDataSync) syncLoop(ctx context.Context) {
 	defer t.wg.Done()
 
-	interval := time.Duration(t.config.SyncIntervalMinutes) * time.Minute
+	interval := time.Duration(t.config.SyncIntervalHours) * time.Hour
 	if interval == 0 {
 		interval = 5 * time.Minute
 	}
@@ -107,10 +111,6 @@ func (t *ThinkingDataSync) syncLoop(ctx context.Context) {
 
 func (t *ThinkingDataSync) runSync(ctx context.Context) {
 	for _, eventConf := range t.config.Events {
-		if !eventConf.Enabled {
-			continue
-		}
-
 		t.logger.Infof("syncing event: %s", eventConf.EventName)
 
 		// Sync from VN endpoint
@@ -131,6 +131,13 @@ func (t *ThinkingDataSync) runSync(ctx context.Context) {
 		t.mu.Lock()
 		t.lastSyncTime[eventConf.EventName] = time.Now()
 		t.mu.Unlock()
+	}
+
+	// Refresh pre-aggregate tables after syncing events
+	if t.aggregationRepo != nil {
+		if err := t.aggregationRepo.RunAllRefreshJobs(ctx); err != nil {
+			t.logger.Errorf("failed to refresh aggregation tables: %v", err)
+		}
 	}
 }
 
@@ -172,7 +179,7 @@ func (t *ThinkingDataSync) syncEventFromEndpoint(
 	t.logger.Infof("fetched %d events for %s from %s", len(rows), eventConf.EventName, region)
 
 	// Transform and insert events
-	events := t.transformEvents(header.Headers, rows, eventConf.EventName, region)
+	events := t.transformEvents(header.Data.Headers, rows, eventConf.EventName, region)
 	if len(events) == 0 {
 		return nil
 	}
@@ -200,7 +207,6 @@ func (t *ThinkingDataSync) buildQuery(eventConf *conf.TDEventSync, since time.Ti
 	// Base fields that are always fetched
 	baseFields := []string{
 		`"#account_id"`,
-		`"#event_id"`,
 		`"#event_time"`,
 	}
 
@@ -222,16 +228,33 @@ func (t *ThinkingDataSync) buildQuery(eventConf *conf.TDEventSync, since time.Ti
 		dateFilter,
 	)
 
+	// Add event-specific filters
+	switch eventConf.EventName {
+	case "login":
+		// Exclude gplay, fptplay login providers
+		query += ` AND ("loginprovider" IS NULL OR "loginprovider" NOT IN ('gplay', 'fptplay'))`
+	case "app_vip_level_up":
+		// Require app_id and current_vip_level to be not null
+		query += ` AND "app_id" IS NOT NULL AND "current_vip_level" IS NOT NULL`
+	}
+
+	// TODO: Remove limit after testing
+	query += ` LIMIT 10`
+
 	return query
 }
 
 func (t *ThinkingDataSync) executeQuery(ctx context.Context, endpoint *conf.TDEndpoint, query string) (string, error) {
+	t.logger.Debugf("TD request: url=%s, token_len=%d, sql=%s", endpoint.QueryURL, len(endpoint.QueryToken), query)
+
 	resp, err := t.client.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
-		SetBody(map[string]interface{}{
-			"token": endpoint.QueryToken,
-			"sql":   query,
+		SetQueryParams(map[string]string{
+			"token":         endpoint.QueryToken,
+			"format":        "json",
+			"timeoutSecond": "30",
+			"sql":           query,
 		}).
 		Post(endpoint.QueryURL)
 
@@ -253,11 +276,14 @@ func (t *ThinkingDataSync) parseResponse(resp string) (*TDResponseHeader, [][]in
 		return nil, nil, fmt.Errorf("empty response")
 	}
 
+	t.logger.Debugf("TD response first line: %s", lines[0])
+
 	// Parse header
 	var header TDResponseHeader
 	if err := json.Unmarshal([]byte(lines[0]), &header); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse header: %w", err)
 	}
+	t.logger.Debugf("TD parsed header: code=%d, msg=%s, headers=%v", header.ReturnCode, header.ReturnMessage, header.Data.Headers)
 
 	if len(lines) < 2 || strings.TrimSpace(lines[1]) == "" {
 		return &header, nil, nil
@@ -316,11 +342,6 @@ func (t *ThinkingDataSync) rowToEvent(headerIdx map[string]int, row []interface{
 		return nil, fmt.Errorf("missing account_id")
 	}
 
-	eventID := cast.ToString(getValue("#event_id"))
-	if eventID == "" {
-		eventID = uuid.New().String()
-	}
-
 	// Parse event time
 	eventTimeRaw := getValue("#event_time")
 	var eventTime time.Time
@@ -353,60 +374,120 @@ func (t *ThinkingDataSync) rowToEvent(headerIdx map[string]int, row []interface{
 		eventTime = time.Now()
 	}
 
-	// Build properties map from all other fields
+	// Fields mapped directly to Event struct columns (skip from Properties)
+	mappedFields := map[string]bool{
+		// Required
+		"#account_id": true,
+		"#event_time": true,
+		// Profile
+		"#os": true, "platform": true,
+		"#country": true, "country": true,
+		"#language": true, "language": true,
+		"device_type": true, "device_brand": true, "server_id": true,
+		// App
+		"appid": true, "app_id": true,
+		// Monetization
+		"amount": true, "currency": true, "storename": true, "current_vip_level": true,
+	}
+
+	// Build properties map from remaining fields
 	properties := make(map[string]interface{})
 	for header, idx := range headerIdx {
-		// Skip base fields that are mapped directly
-		if header == "#account_id" || header == "#event_id" || header == "#event_time" {
+		if mappedFields[header] {
 			continue
 		}
 		if idx < len(row) && row[idx] != nil {
 			properties[header] = row[idx]
 		}
 	}
-
-	// Add region to properties
 	properties["region"] = region
 
-	// Extract revenue for payment events
-	var revenue float64
-	if eventName == "pay" {
-		revenue = cast.ToFloat64(getValue("amount"))
-	}
-
-	// Detect payment channel (web vs app)
-	var paymentChannel string
-	if storename := cast.ToString(getValue("storename")); storename != "" {
-		if storename == "shop.vnggames.com/vn" {
-			paymentChannel = "web"
-		} else {
-			paymentChannel = "app"
-		}
-		properties["payment_channel"] = paymentChannel
-	}
-
-	// Extract platform if available
+	// === Profile/Demographic fields ===
 	platform := cast.ToString(getValue("#os"))
 	if platform == "" {
 		platform = cast.ToString(getValue("platform"))
 	}
 
-	// Extract app_id
+	country := cast.ToString(getValue("#country"))
+	if country == "" {
+		country = cast.ToString(getValue("country"))
+	}
+
+	deviceType := cast.ToString(getValue("device_type"))
+	deviceBrand := cast.ToString(getValue("device_brand"))
+	serverID := cast.ToString(getValue("server_id"))
+
+	language := cast.ToString(getValue("#language"))
+	if language == "" {
+		language = cast.ToString(getValue("language"))
+	}
+
+	// === App ID ===
 	appID := cast.ToString(getValue("appid"))
 	if appID == "" {
 		appID = cast.ToString(getValue("app_id"))
 	}
 
+	// === Monetization fields ===
+	var revenue float64
+	var currency string
+	var paymentChannel string
+	var vipLevel uint8
+
+	// Revenue from payment events (pay event only)
+	if eventName == "pay" {
+		revenue = cast.ToFloat64(getValue("amount"))
+		currency = cast.ToString(getValue("currency"))
+
+		// Detect payment channel based on storename
+		storename := cast.ToString(getValue("storename"))
+
+		switch {
+		case strings.HasPrefix(storename, "shop"):
+			// Webshop: Prefix shop (e.g., shop.vnggames.com/vn)
+			paymentChannel = "webshop"
+		case storename == "Google Play Store Gateway":
+			// Google Play Store
+			paymentChannel = "google"
+		case storename == "3rdParty IAP Gateway":
+			// ZaloPay/Dana
+			paymentChannel = "3rd_party"
+		case storename == "Apple Store Gateway":
+			// Apple App Store
+			paymentChannel = "apple"
+		default:
+			paymentChannel = "webshop"
+		}
+	}
+
+	// VIP level from app_vip_level_up event
+	if eventName == "app_vip_level_up" {
+		vipLevel = cast.ToUint8(getValue("current_vip_level"))
+	}
+
 	event := &data.Event{
-		EventID:    eventID,
-		UserID:     accountID,
-		EventName:  eventName, // Keep original TD event name
-		EventTime:  eventTime,
+		UserID:    accountID,
+		AppID:     appID,
+		EventName: eventName, // Keep original TD event name
+
+		// Profile
+		Platform:    platform,
+		Country:     country,
+		DeviceType:  deviceType,
+		DeviceBrand: deviceBrand,
+		ServerID:    serverID,
+		Language:    language,
+
+		// Monetization
+		Revenue:        revenue,
+		Currency:       currency,
+		PaymentChannel: paymentChannel,
+		VIPLevel:       vipLevel,
+
+		// Flexible
 		Properties: properties,
-		Revenue:    revenue,
-		Platform:   platform,
-		AppID:      appID,
-		CreatedAt:  time.Now(),
+		EventTime:  eventTime,
+		ReceivedAt: time.Now(),
 	}
 
 	return event, nil

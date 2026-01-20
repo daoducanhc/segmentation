@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -195,17 +196,45 @@ func (h *consumerHandler) parseMessage(msg []byte) (*data.Event, error) {
 		if platform, ok := props["#os"].(string); ok {
 			event.Platform = platform
 		}
-		if version, ok := props["#app_version"].(string); ok {
-			event.AppVersion = version
+		if country, ok := props["#country"].(string); ok {
+			event.Country = country
 		}
-		if sessionID, ok := props["#session_id"].(string); ok {
-			event.SessionID = sessionID
+		if deviceType, ok := props["device_type"].(string); ok {
+			event.DeviceType = deviceType
 		}
-		if revenue, ok := props["revenue"].(float64); ok {
+		if deviceBrand, ok := props["device_brand"].(string); ok {
+			event.DeviceBrand = deviceBrand
+		}
+		if serverID, ok := props["server_id"].(string); ok {
+			event.ServerID = serverID
+		}
+		if language, ok := props["#language"].(string); ok {
+			event.Language = language
+		}
+		if appID, ok := props["appid"].(string); ok {
+			event.AppID = appID
+		}
+		if revenue, ok := props["amount"].(float64); ok {
 			event.Revenue = revenue
 		}
 		if currency, ok := props["currency"].(string); ok {
 			event.Currency = currency
+		}
+		// Detect payment channel based on storename (only for "pay" event)
+		if event.EventName == "pay" {
+			storename, _ := props["storename"].(string)
+			switch {
+			case strings.HasPrefix(storename, "shop"):
+				event.PaymentChannel = "webshop"
+			case storename == "Google Play Store Gateway":
+				event.PaymentChannel = "google"
+			case storename == "3rdParty IAP Gateway":
+				event.PaymentChannel = "3rd_party"
+			case storename == "Apple Store Gateway":
+				event.PaymentChannel = "apple"
+			default:
+				event.PaymentChannel = "webshop"
+			}
 		}
 	}
 

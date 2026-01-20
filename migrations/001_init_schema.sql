@@ -9,7 +9,7 @@ CREATE DATABASE IF NOT EXISTS segmentation;
 -- =============================================================================
 -- USERS TABLE
 -- =============================================================================
--- Core user attributes synced from MySQL
+-- Core user attributes aggregated from events
 CREATE TABLE IF NOT EXISTS segmentation.users
 (
     user_id String,
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS segmentation.users
     is_paying_user UInt8 DEFAULT 0,             -- PU flag
     
     -- Monetary metrics
-    total_revenue Decimal64(4) DEFAULT 0,
+    total_revenue Float64 DEFAULT 0,
     total_purchases UInt32 DEFAULT 0,
     
     -- Engagement metrics (updated periodically)
@@ -59,26 +59,31 @@ ALTER TABLE segmentation.users ADD INDEX idx_is_pu is_paying_user TYPE set(2) GR
 -- =============================================================================
 -- EVENTS TABLE
 -- =============================================================================
--- Event stream from Kafka/ThinkingData
+-- Event stream from ThinkingData
+-- Optimized for Phase 1 criteria: Activity, Monetization, RFM, Profile
 CREATE TABLE IF NOT EXISTS segmentation.events
 (
-    event_id UUID DEFAULT generateUUIDv4(),
     user_id String,
-    event_name LowCardinality(String),
+    app_id LowCardinality(String),            -- Game/app identifier
+    event_name LowCardinality(String),        -- e.g., 'login', 'iapPurchasedItem', 'iapVipLevelUp'
     event_time DateTime64(3),
     
-    -- Event context
-    session_id String DEFAULT '',
-    platform LowCardinality(String) DEFAULT '',
-    app_version String DEFAULT '',
-    app_id LowCardinality(String) DEFAULT '',
+    -- Profile/Demographic (for profile criteria)
+    platform LowCardinality(String) DEFAULT '',      -- 'ios', 'android', 'web'
+    country LowCardinality(String) DEFAULT '',       -- Country code
+    device_type LowCardinality(String) DEFAULT '',   -- 'phone', 'tablet', 'pc'
+    device_brand LowCardinality(String) DEFAULT '',  -- 'Apple', 'Samsung', etc.
+    server_id LowCardinality(String) DEFAULT '',     -- Game server
+    language LowCardinality(String) DEFAULT '',      -- User language
     
-    -- Event properties (flexible JSON)
+    -- Monetization (for PU, RFM criteria)
+    revenue Float64 DEFAULT 0,                       -- Payment amount (VND or base currency)
+    currency LowCardinality(String) DEFAULT '',      -- Original currency
+    payment_channel LowCardinality(String) DEFAULT '', -- 'webshop', 'google', '3rd_party', 'apple'
+    vip_level UInt8 DEFAULT 0,                       -- Current VIP level (from iapVipLevelUp)
+    
+    -- Flexible storage for other event-specific data
     properties String DEFAULT '{}',
-    
-    -- Revenue tracking
-    revenue Decimal64(4) DEFAULT 0,
-    currency LowCardinality(String) DEFAULT '',
     
     -- Processing metadata
     received_at DateTime64(3) DEFAULT now64(3),
@@ -88,54 +93,79 @@ CREATE TABLE IF NOT EXISTS segmentation.events
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(event_date)
-ORDER BY (event_name, user_id, event_time)
+ORDER BY (app_id, event_name, user_id, event_time)
 TTL event_date + INTERVAL 365 DAY
 SETTINGS index_granularity = 8192;
 
 -- Indexes for common query patterns
 ALTER TABLE segmentation.events ADD INDEX idx_user_id user_id TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE segmentation.events ADD INDEX idx_event_name event_name TYPE set(1000) GRANULARITY 4;
-ALTER TABLE segmentation.events ADD INDEX idx_app_id app_id TYPE set(100) GRANULARITY 4;
+ALTER TABLE segmentation.events ADD INDEX idx_event_name event_name TYPE set(100) GRANULARITY 4;
+ALTER TABLE segmentation.events ADD INDEX idx_platform platform TYPE set(10) GRANULARITY 4;
+ALTER TABLE segmentation.events ADD INDEX idx_country country TYPE set(300) GRANULARITY 4;
+ALTER TABLE segmentation.events ADD INDEX idx_payment_channel payment_channel TYPE set(5) GRANULARITY 4;
 
 -- =============================================================================
 -- MATERIALIZED VIEW: Daily User Activity
 -- =============================================================================
--- Pre-aggregated daily activity for A7/A30 calculations
+-- Pre-aggregated daily activity for A1/A3/A7/A30 and RFM calculations
 CREATE TABLE IF NOT EXISTS segmentation.user_daily_activity
 (
     user_id String,
+    app_id LowCardinality(String),
     activity_date Date,
+    
+    -- Profile (latest per day)
     platform LowCardinality(String),
+    country LowCardinality(String),
+    device_type LowCardinality(String),
+    device_brand LowCardinality(String),
+    server_id LowCardinality(String),
     
     -- Activity metrics
-    session_count UInt32,
+    login_count UInt32,                       -- For activity criteria
     event_count UInt32,
     
-    -- Revenue metrics
-    revenue Decimal64(4),
-    purchase_count UInt32,
+    -- Monetization metrics (for PU, RFM)
+    revenue Float64,                          -- Total spend that day
+    purchase_count UInt32,                    -- Number of purchases
+    webshop_purchase_count UInt32,            -- Purchases via webshop
+    google_purchase_count UInt32,             -- Purchases via Google Play
+    apple_purchase_count UInt32,              -- Purchases via Apple App Store
+    third_party_purchase_count UInt32,        -- Purchases via 3rd party (ZaloPay/Dana)
+    max_vip_level SimpleAggregateFunction(max, UInt8),  -- Highest VIP level reached (max, not sum)
     
-    -- Event breakdown (top events)
+    -- Event breakdown
     event_counts Map(LowCardinality(String), UInt32)
 )
 ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMM(activity_date)
-ORDER BY (user_id, activity_date, platform);
+ORDER BY (app_id, user_id, activity_date);
 
 -- Materialized view to populate daily activity
+-- NOTE: Use table alias 'e' to avoid column name conflicts with target table
 CREATE MATERIALIZED VIEW IF NOT EXISTS segmentation.mv_user_daily_activity
 TO segmentation.user_daily_activity
 AS SELECT
-    user_id,
-    toDate(event_time) AS activity_date,
-    platform,
-    uniqExact(session_id) AS session_count,
-    count() AS event_count,
-    sum(revenue) AS revenue,
-    countIf(revenue > 0) AS purchase_count,
-    sumMap(map(event_name, toUInt32(1))) AS event_counts
-FROM segmentation.events
-GROUP BY user_id, activity_date, platform;
+    e.user_id AS user_id,
+    e.app_id AS app_id,
+    toDate(e.event_time) AS activity_date,
+    any(e.platform) AS platform,
+    any(e.country) AS country,
+    any(e.device_type) AS device_type,
+    any(e.device_brand) AS device_brand,
+    any(e.server_id) AS server_id,
+    toUInt32(countIf(e.event_name = 'login')) AS login_count,
+    toUInt32(count()) AS event_count,
+    sum(e.revenue) AS revenue,
+    toUInt32(countIf(e.revenue > 0)) AS purchase_count,
+    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = 'webshop')) AS webshop_purchase_count,
+    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = 'google')) AS google_purchase_count,
+    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = 'apple')) AS apple_purchase_count,
+    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = '3rd_party')) AS third_party_purchase_count,
+    toUInt8(max(e.vip_level)) AS max_vip_level,
+    sumMap(map(e.event_name, toUInt32(1))) AS event_counts
+FROM segmentation.events AS e
+GROUP BY e.user_id, e.app_id, toDate(e.event_time);
 
 -- =============================================================================
 -- MATERIALIZED VIEW: User Activity Summary (Rolling Windows)
@@ -155,8 +185,8 @@ CREATE TABLE IF NOT EXISTS segmentation.user_activity_summary
     days_since_last_activity UInt16,
     
     -- Revenue windows
-    revenue_7d Decimal64(4),
-    revenue_30d Decimal64(4),
+    revenue_7d Float64,
+    revenue_30d Float64,
     
     -- Flags
     is_active_7d UInt8,     -- A7: active in last 7 days
@@ -245,7 +275,7 @@ CREATE TABLE IF NOT EXISTS segmentation.segment_evaluations
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(evaluated_at)
 ORDER BY (segment_id, evaluated_at)
-TTL evaluated_at + INTERVAL 90 DAY;
+TTL toDateTime(evaluated_at) + INTERVAL 90 DAY;
 
 -- =============================================================================
 -- KAFKA INTEGRATION (Optional - for event streaming)
@@ -261,7 +291,7 @@ TTL evaluated_at + INTERVAL 90 DAY;
 --     platform String,
 --     app_version String,
 --     properties String,
---     revenue Decimal64(4),
+--     revenue Float64,
 --     currency String
 -- )
 -- ENGINE = Kafka
@@ -290,35 +320,119 @@ TTL evaluated_at + INTERVAL 90 DAY;
 -- FROM segmentation.events_kafka;
 
 -- =============================================================================
--- HELPER VIEWS
+-- HELPER VIEWS FOR PHASE 1 CRITERIA
 -- =============================================================================
+
+-- ============ ACTIVITY CRITERIA ============
+
+-- View: Active users in last 1 day (A1)
+CREATE VIEW IF NOT EXISTS segmentation.v_active_1d AS
+SELECT DISTINCT user_id, app_id
+FROM segmentation.user_daily_activity
+WHERE activity_date >= today() - 1;
+
+-- View: Active users in last 3 days (A3)
+CREATE VIEW IF NOT EXISTS segmentation.v_active_3d AS
+SELECT DISTINCT user_id, app_id
+FROM segmentation.user_daily_activity
+WHERE activity_date >= today() - 3;
 
 -- View: Active users in last 7 days (A7)
 CREATE VIEW IF NOT EXISTS segmentation.v_active_7d AS
-SELECT DISTINCT user_id
+SELECT DISTINCT user_id, app_id
 FROM segmentation.user_daily_activity
 WHERE activity_date >= today() - 7;
 
 -- View: Active users in last 30 days (A30)
 CREATE VIEW IF NOT EXISTS segmentation.v_active_30d AS
-SELECT DISTINCT user_id
+SELECT DISTINCT user_id, app_id
 FROM segmentation.user_daily_activity
 WHERE activity_date >= today() - 30;
 
--- View: Paying users (PU)
-CREATE VIEW IF NOT EXISTS segmentation.v_paying_users AS
-SELECT user_id
-FROM segmentation.users FINAL
-WHERE is_paying_user = 1;
-
--- View: Churned users (no activity in 30+ days, but were active before)
+-- View: Churned users (no activity in 30+ days)
 CREATE VIEW IF NOT EXISTS segmentation.v_churned_users AS
-SELECT u.user_id
-FROM segmentation.users FINAL AS u
-LEFT JOIN (
-    SELECT DISTINCT user_id
+SELECT u.user_id, u.app_id
+FROM (
+    SELECT user_id, app_id, max(activity_date) as last_active
     FROM segmentation.user_daily_activity
-    WHERE activity_date >= today() - 30
-) AS active ON u.user_id = active.user_id
-WHERE active.user_id IS NULL
-AND u.last_seen_at < now() - INTERVAL 30 DAY;
+    GROUP BY user_id, app_id
+) u
+WHERE u.last_active < today() - 30;
+
+-- ============ MONETIZATION CRITERIA ============
+
+-- View: Paying users (at least 1 purchase ever)
+CREATE VIEW IF NOT EXISTS segmentation.v_paying_users AS
+SELECT user_id, app_id, sum(revenue) as total_revenue, sum(purchase_count) as total_purchases
+FROM segmentation.user_daily_activity
+WHERE purchase_count > 0
+GROUP BY user_id, app_id;
+
+-- View: Recent paying users (purchase in last N days - parameterized via query)
+CREATE VIEW IF NOT EXISTS segmentation.v_recent_payers AS
+SELECT user_id, app_id, sum(revenue) as revenue_period, sum(purchase_count) as purchases_period
+FROM segmentation.user_daily_activity
+WHERE purchase_count > 0
+GROUP BY user_id, app_id;
+
+-- View: Payment channel breakdown (4 channels: webshop, google, apple, 3rd_party)
+CREATE VIEW IF NOT EXISTS segmentation.v_payment_channels AS
+SELECT 
+    user_id, 
+    app_id,
+    sum(webshop_purchase_count) as webshop_purchases,
+    sum(google_purchase_count) as google_purchases,
+    sum(apple_purchase_count) as apple_purchases,
+    sum(third_party_purchase_count) as third_party_purchases,
+    -- Primary channel is the one with most purchases
+    arrayElement(
+        ['webshop', 'google', 'apple', '3rd_party'],
+        indexOf(
+            [sum(webshop_purchase_count), sum(google_purchase_count), sum(apple_purchase_count), sum(third_party_purchase_count)],
+            greatest(sum(webshop_purchase_count), sum(google_purchase_count), sum(apple_purchase_count), sum(third_party_purchase_count))
+        )
+    ) as primary_channel
+FROM segmentation.user_daily_activity
+GROUP BY user_id, app_id;
+
+-- View: VIP users
+CREATE VIEW IF NOT EXISTS segmentation.v_vip_users AS
+SELECT user_id, app_id, max(max_vip_level) as vip_level
+FROM segmentation.user_daily_activity
+WHERE max_vip_level > 0
+GROUP BY user_id, app_id;
+
+-- ============ RFM CRITERIA ============
+
+-- View: RFM base data for bucketing
+CREATE VIEW IF NOT EXISTS segmentation.v_rfm_base AS
+SELECT 
+    user_id,
+    app_id,
+    -- Recency: days since last purchase
+    dateDiff('day', max(activity_date), today()) as days_since_purchase,
+    -- Frequency: total purchase count
+    sum(purchase_count) as total_purchases,
+    -- Monetary: total revenue
+    sum(revenue) as total_revenue
+FROM segmentation.user_daily_activity
+WHERE purchase_count > 0
+GROUP BY user_id, app_id;
+
+-- ============ PROFILE CRITERIA ============
+
+-- View: User latest profile (most recent activity's profile data)
+CREATE VIEW IF NOT EXISTS segmentation.v_user_profiles AS
+SELECT 
+    user_id,
+    app_id,
+    argMax(platform, activity_date) as platform,
+    argMax(country, activity_date) as country,
+    argMax(device_type, activity_date) as device_type,
+    argMax(device_brand, activity_date) as device_brand,
+    argMax(server_id, activity_date) as server_id,
+    min(activity_date) as first_active_date,
+    max(activity_date) as last_active_date,
+    dateDiff('day', min(activity_date), today()) as account_age_days
+FROM segmentation.user_daily_activity
+GROUP BY user_id, app_id;

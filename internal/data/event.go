@@ -7,24 +7,35 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/google/uuid"
 )
 
 // Event represents an event in the database
+// Aligned with Phase 1 criteria: Activity, Monetization, RFM, Profile
 type Event struct {
-	EventID    string
-	UserID     string
-	EventName  string
-	EventTime  time.Time
-	SessionID  string
-	Platform   string
-	AppVersion string
-	AppID      string
+	UserID    string
+	AppID     string
+	EventName string
+	EventTime time.Time
+
+	// Profile/Demographic
+	Platform    string // ios, android, web
+	Country     string
+	DeviceType  string // phone, tablet, pc
+	DeviceBrand string // Apple, Samsung, etc.
+	ServerID    string // Game server
+	Language    string
+
+	// Monetization
+	Revenue        float64
+	Currency       string
+	PaymentChannel string // app, web
+	VIPLevel       uint8
+
+	// Flexible storage
 	Properties map[string]interface{}
-	Revenue    float64
-	Currency   string
+
+	// Metadata
 	ReceivedAt time.Time
-	CreatedAt  time.Time
 }
 
 // EventRepo handles event data operations
@@ -43,9 +54,6 @@ func NewEventRepo(data *Data, logger log.Logger) *EventRepo {
 
 // Insert inserts a single event
 func (r *EventRepo) Insert(ctx context.Context, event *Event) error {
-	if event.EventID == "" {
-		event.EventID = uuid.New().String()
-	}
 	if event.ReceivedAt.IsZero() {
 		event.ReceivedAt = time.Now()
 	}
@@ -61,22 +69,29 @@ func (r *EventRepo) Insert(ctx context.Context, event *Event) error {
 
 	query := `
 		INSERT INTO segmentation.events 
-		(event_id, user_id, event_name, event_time, session_id, platform, 
-		 app_version, properties, revenue, currency, received_at, event_date)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(user_id, app_id, event_name, event_time, 
+		 platform, country, device_type, device_brand, server_id, language,
+		 revenue, currency, payment_channel, vip_level,
+		 properties, received_at, event_date)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	return r.data.ExecuteExec(ctx, query,
-		event.EventID,
 		event.UserID,
+		event.AppID,
 		event.EventName,
 		event.EventTime,
-		event.SessionID,
 		event.Platform,
-		event.AppVersion,
-		propsJSON,
+		event.Country,
+		event.DeviceType,
+		event.DeviceBrand,
+		event.ServerID,
+		event.Language,
 		event.Revenue,
 		event.Currency,
+		event.PaymentChannel,
+		event.VIPLevel,
+		propsJSON,
 		event.ReceivedAt,
 		event.EventTime,
 	)
@@ -90,8 +105,10 @@ func (r *EventRepo) InsertBatch(ctx context.Context, events []*Event) error {
 
 	query := `
 		INSERT INTO segmentation.events 
-		(event_id, user_id, event_name, event_time, session_id, platform, 
-		 app_version, app_id, properties, revenue, currency, received_at, event_date)
+		(user_id, app_id, event_name, event_time, 
+		 platform, country, device_type, device_brand, server_id, language,
+		 revenue, currency, payment_channel, vip_level,
+		 properties, received_at, event_date)
 	`
 
 	batch, err := r.data.Batch(ctx, query)
@@ -100,9 +117,6 @@ func (r *EventRepo) InsertBatch(ctx context.Context, events []*Event) error {
 	}
 
 	for _, event := range events {
-		if event.EventID == "" {
-			event.EventID = uuid.New().String()
-		}
 		if event.ReceivedAt.IsZero() {
 			event.ReceivedAt = time.Now()
 		}
@@ -114,17 +128,21 @@ func (r *EventRepo) InsertBatch(ctx context.Context, events []*Event) error {
 		}
 
 		err := batch.Append(
-			event.EventID,
 			event.UserID,
+			event.AppID,
 			event.EventName,
 			event.EventTime,
-			event.SessionID,
 			event.Platform,
-			event.AppVersion,
-			event.AppID,
-			propsJSON,
+			event.Country,
+			event.DeviceType,
+			event.DeviceBrand,
+			event.ServerID,
+			event.Language,
 			event.Revenue,
 			event.Currency,
+			event.PaymentChannel,
+			event.VIPLevel,
+			propsJSON,
 			event.ReceivedAt,
 			event.EventTime,
 		)
@@ -217,6 +235,71 @@ func (r *EventRepo) GetDistinctEventNames(ctx context.Context) ([]string, error)
 	}
 
 	return names, nil
+}
+
+// VIPLevelRange represents min/max VIP level for an app
+type VIPLevelRange struct {
+	AppID    string
+	MinLevel uint8
+	MaxLevel uint8
+}
+
+// GetVIPLevelRangeByAppID returns the min and max VIP levels for each app_id
+// This is used for UI dropdowns since each game may have different VIP level ranges
+func (r *EventRepo) GetVIPLevelRangeByAppID(ctx context.Context) ([]VIPLevelRange, error) {
+	query := `
+		SELECT 
+			app_id,
+			min(vip_level) AS min_level,
+			max(vip_level) AS max_level
+		FROM segmentation.events
+		WHERE event_name = 'app_vip_level_up' 
+		AND vip_level > 0
+		AND app_id != ''
+		GROUP BY app_id
+		ORDER BY app_id
+	`
+
+	rows, err := r.data.ExecuteQuery(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VIP level ranges: %w", err)
+	}
+	defer rows.Close()
+
+	var ranges []VIPLevelRange
+	for rows.Next() {
+		var r VIPLevelRange
+		if err := rows.Scan(&r.AppID, &r.MinLevel, &r.MaxLevel); err != nil {
+			return nil, fmt.Errorf("failed to scan VIP level range: %w", err)
+		}
+		ranges = append(ranges, r)
+	}
+
+	return ranges, nil
+}
+
+// GetVIPLevelRangeForApp returns the min and max VIP levels for a specific app_id
+func (r *EventRepo) GetVIPLevelRangeForApp(ctx context.Context, appID string) (*VIPLevelRange, error) {
+	query := `
+		SELECT 
+			app_id,
+			min(vip_level) AS min_level,
+			max(vip_level) AS max_level
+		FROM segmentation.events
+		WHERE event_name = 'app_vip_level_up' 
+		AND vip_level > 0
+		AND app_id = ?
+		GROUP BY app_id
+	`
+
+	row := r.data.QueryRow(ctx, query, appID)
+
+	var result VIPLevelRange
+	if err := row.Scan(&result.AppID, &result.MinLevel, &result.MaxLevel); err != nil {
+		return nil, fmt.Errorf("failed to get VIP level range for app %s: %w", appID, err)
+	}
+
+	return &result, nil
 }
 
 // GetUsersByEvent returns user IDs who triggered a specific event

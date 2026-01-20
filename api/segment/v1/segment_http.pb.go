@@ -19,6 +19,7 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationSegmentServiceAddUsersToStaticSegment = "/api.segment.v1.SegmentService/AddUsersToStaticSegment"
 const OperationSegmentServiceCreateSegment = "/api.segment.v1.SegmentService/CreateSegment"
 const OperationSegmentServiceDeleteSegment = "/api.segment.v1.SegmentService/DeleteSegment"
 const OperationSegmentServiceEvaluateSegment = "/api.segment.v1.SegmentService/EvaluateSegment"
@@ -26,9 +27,13 @@ const OperationSegmentServiceGetSegment = "/api.segment.v1.SegmentService/GetSeg
 const OperationSegmentServiceGetSegmentUserCount = "/api.segment.v1.SegmentService/GetSegmentUserCount"
 const OperationSegmentServiceListSegments = "/api.segment.v1.SegmentService/ListSegments"
 const OperationSegmentServicePreviewSegment = "/api.segment.v1.SegmentService/PreviewSegment"
+const OperationSegmentServiceRemoveUsersFromStaticSegment = "/api.segment.v1.SegmentService/RemoveUsersFromStaticSegment"
 const OperationSegmentServiceUpdateSegment = "/api.segment.v1.SegmentService/UpdateSegment"
+const OperationSegmentServiceUploadStaticSegment = "/api.segment.v1.SegmentService/UploadStaticSegment"
 
 type SegmentServiceHTTPServer interface {
+	// AddUsersToStaticSegment AddUsersToStaticSegment adds users to an existing static segment
+	AddUsersToStaticSegment(context.Context, *AddUsersToStaticSegmentRequest) (*AddUsersToStaticSegmentResponse, error)
 	// CreateSegment CreateSegment creates a new segment definition
 	CreateSegment(context.Context, *CreateSegmentRequest) (*CreateSegmentResponse, error)
 	// DeleteSegment DeleteSegment deletes a segment
@@ -43,8 +48,12 @@ type SegmentServiceHTTPServer interface {
 	ListSegments(context.Context, *ListSegmentsRequest) (*ListSegmentsResponse, error)
 	// PreviewSegment PreviewSegment previews segment results without saving
 	PreviewSegment(context.Context, *PreviewSegmentRequest) (*PreviewSegmentResponse, error)
+	// RemoveUsersFromStaticSegment RemoveUsersFromStaticSegment removes users from a static segment
+	RemoveUsersFromStaticSegment(context.Context, *RemoveUsersFromStaticSegmentRequest) (*RemoveUsersFromStaticSegmentResponse, error)
 	// UpdateSegment UpdateSegment updates an existing segment
 	UpdateSegment(context.Context, *UpdateSegmentRequest) (*UpdateSegmentResponse, error)
+	// UploadStaticSegment UploadStaticSegment creates a static segment from uploaded user IDs
+	UploadStaticSegment(context.Context, *UploadStaticSegmentRequest) (*UploadStaticSegmentResponse, error)
 }
 
 func RegisterSegmentServiceHTTPServer(s *http.Server, srv SegmentServiceHTTPServer) {
@@ -57,6 +66,9 @@ func RegisterSegmentServiceHTTPServer(s *http.Server, srv SegmentServiceHTTPServ
 	r.POST("/v1/segments/{id}/evaluate", _SegmentService_EvaluateSegment0_HTTP_Handler(srv))
 	r.POST("/v1/segments/preview", _SegmentService_PreviewSegment0_HTTP_Handler(srv))
 	r.GET("/v1/segments/{id}/count", _SegmentService_GetSegmentUserCount0_HTTP_Handler(srv))
+	r.POST("/v1/segments/upload", _SegmentService_UploadStaticSegment0_HTTP_Handler(srv))
+	r.POST("/v1/segments/{id}/users", _SegmentService_AddUsersToStaticSegment0_HTTP_Handler(srv))
+	r.DELETE("/v1/segments/{id}/users", _SegmentService_RemoveUsersFromStaticSegment0_HTTP_Handler(srv))
 }
 
 func _SegmentService_CreateSegment0_HTTP_Handler(srv SegmentServiceHTTPServer) func(ctx http.Context) error {
@@ -238,7 +250,78 @@ func _SegmentService_GetSegmentUserCount0_HTTP_Handler(srv SegmentServiceHTTPSer
 	}
 }
 
+func _SegmentService_UploadStaticSegment0_HTTP_Handler(srv SegmentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UploadStaticSegmentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSegmentServiceUploadStaticSegment)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UploadStaticSegment(ctx, req.(*UploadStaticSegmentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*UploadStaticSegmentResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _SegmentService_AddUsersToStaticSegment0_HTTP_Handler(srv SegmentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in AddUsersToStaticSegmentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSegmentServiceAddUsersToStaticSegment)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.AddUsersToStaticSegment(ctx, req.(*AddUsersToStaticSegmentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AddUsersToStaticSegmentResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _SegmentService_RemoveUsersFromStaticSegment0_HTTP_Handler(srv SegmentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RemoveUsersFromStaticSegmentRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSegmentServiceRemoveUsersFromStaticSegment)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RemoveUsersFromStaticSegment(ctx, req.(*RemoveUsersFromStaticSegmentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*RemoveUsersFromStaticSegmentResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type SegmentServiceHTTPClient interface {
+	// AddUsersToStaticSegment AddUsersToStaticSegment adds users to an existing static segment
+	AddUsersToStaticSegment(ctx context.Context, req *AddUsersToStaticSegmentRequest, opts ...http.CallOption) (rsp *AddUsersToStaticSegmentResponse, err error)
 	// CreateSegment CreateSegment creates a new segment definition
 	CreateSegment(ctx context.Context, req *CreateSegmentRequest, opts ...http.CallOption) (rsp *CreateSegmentResponse, err error)
 	// DeleteSegment DeleteSegment deletes a segment
@@ -253,8 +336,12 @@ type SegmentServiceHTTPClient interface {
 	ListSegments(ctx context.Context, req *ListSegmentsRequest, opts ...http.CallOption) (rsp *ListSegmentsResponse, err error)
 	// PreviewSegment PreviewSegment previews segment results without saving
 	PreviewSegment(ctx context.Context, req *PreviewSegmentRequest, opts ...http.CallOption) (rsp *PreviewSegmentResponse, err error)
+	// RemoveUsersFromStaticSegment RemoveUsersFromStaticSegment removes users from a static segment
+	RemoveUsersFromStaticSegment(ctx context.Context, req *RemoveUsersFromStaticSegmentRequest, opts ...http.CallOption) (rsp *RemoveUsersFromStaticSegmentResponse, err error)
 	// UpdateSegment UpdateSegment updates an existing segment
 	UpdateSegment(ctx context.Context, req *UpdateSegmentRequest, opts ...http.CallOption) (rsp *UpdateSegmentResponse, err error)
+	// UploadStaticSegment UploadStaticSegment creates a static segment from uploaded user IDs
+	UploadStaticSegment(ctx context.Context, req *UploadStaticSegmentRequest, opts ...http.CallOption) (rsp *UploadStaticSegmentResponse, err error)
 }
 
 type SegmentServiceHTTPClientImpl struct {
@@ -263,6 +350,20 @@ type SegmentServiceHTTPClientImpl struct {
 
 func NewSegmentServiceHTTPClient(client *http.Client) SegmentServiceHTTPClient {
 	return &SegmentServiceHTTPClientImpl{client}
+}
+
+// AddUsersToStaticSegment AddUsersToStaticSegment adds users to an existing static segment
+func (c *SegmentServiceHTTPClientImpl) AddUsersToStaticSegment(ctx context.Context, in *AddUsersToStaticSegmentRequest, opts ...http.CallOption) (*AddUsersToStaticSegmentResponse, error) {
+	var out AddUsersToStaticSegmentResponse
+	pattern := "/v1/segments/{id}/users"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationSegmentServiceAddUsersToStaticSegment))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // CreateSegment CreateSegment creates a new segment definition
@@ -363,6 +464,20 @@ func (c *SegmentServiceHTTPClientImpl) PreviewSegment(ctx context.Context, in *P
 	return &out, nil
 }
 
+// RemoveUsersFromStaticSegment RemoveUsersFromStaticSegment removes users from a static segment
+func (c *SegmentServiceHTTPClientImpl) RemoveUsersFromStaticSegment(ctx context.Context, in *RemoveUsersFromStaticSegmentRequest, opts ...http.CallOption) (*RemoveUsersFromStaticSegmentResponse, error) {
+	var out RemoveUsersFromStaticSegmentResponse
+	pattern := "/v1/segments/{id}/users"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationSegmentServiceRemoveUsersFromStaticSegment))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // UpdateSegment UpdateSegment updates an existing segment
 func (c *SegmentServiceHTTPClientImpl) UpdateSegment(ctx context.Context, in *UpdateSegmentRequest, opts ...http.CallOption) (*UpdateSegmentResponse, error) {
 	var out UpdateSegmentResponse
@@ -371,6 +486,20 @@ func (c *SegmentServiceHTTPClientImpl) UpdateSegment(ctx context.Context, in *Up
 	opts = append(opts, http.Operation(OperationSegmentServiceUpdateSegment))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UploadStaticSegment UploadStaticSegment creates a static segment from uploaded user IDs
+func (c *SegmentServiceHTTPClientImpl) UploadStaticSegment(ctx context.Context, in *UploadStaticSegmentRequest, opts ...http.CallOption) (*UploadStaticSegmentResponse, error) {
+	var out UploadStaticSegmentResponse
+	pattern := "/v1/segments/upload"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationSegmentServiceUploadStaticSegment))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

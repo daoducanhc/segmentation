@@ -10,7 +10,8 @@ server:
 
 data:
   clickhouse:
-    addr: clickhouse:9000
+    # Use localhost:9100 for local dev, mgp-clickhouse-local:9000 for docker
+    addr: localhost:9100
     database: segmentation
     username: default
     password: ""
@@ -21,46 +22,79 @@ data:
 
 kafka:
   brokers:
-    - kafka:9092
+    # Use localhost:29092 for local dev, mgp-kafka-local:9092 for docker
+    - localhost:29092
   topic: user_events
   group_id: segmentation_consumer
   batch_size: 1000
   max_wait_seconds: 5
 
-mysql:
-  dsn: "user:password@tcp(mysql:3306)/app?parseTime=true"
-  max_open_conns: 10
-  max_idle_conns: 5
-  conn_max_lifetime_minutes: 60
-  sync_batch_size: 5000
-  sync_interval_minutes: 5
-
 # ThinkingData event sync configuration
+# Note: query_url and query_token are loaded from environment variables:
+#   THINKINGDATA_VN_QUERY_URL, THINKINGDATA_VN_QUERY_TOKEN
+#   THINKINGDATA_GLOBAL_QUERY_URL, THINKINGDATA_GLOBAL_QUERY_TOKEN
 thinkingdata:
-  # VN region endpoint
-  vn:
-    query_url: "${THINKINGDATA_VN_QUERY_URL}"
-    query_token: "${THINKINGDATA_VN_QUERY_TOKEN}"
-  
-  # Global region endpoint
-  global:
-    query_url: "${THINKINGDATA_GLOBAL_QUERY_URL}"
-    query_token: "${THINKINGDATA_GLOBAL_QUERY_TOKEN}"
   
   # Common settings
   event_view: "v_event_8"
-  sync_interval_minutes: 5
+  sync_interval_hours: 24
   batch_size: 1000
   lookback_days: 30
   timeout_seconds: 120
   
-  # Event types to sync
+  # Event types to sync for Phase 1 criteria
   events:
+    # Login event - for user activity tracking
+    # Excludes loginprovider = 'gplay', 'fptplay'
+    - event_name: "login"
+      fields:
+        - "appid"
+        - "loginprovider"
+    
+    # Pay event - for monetization tracking
     - event_name: "pay"
       fields:
         - "appid"
         - "amount"
         - "currency"
         - "storename"
-        - "#os"
-      enabled: true
+    
+    # VIP Level event
+    - event_name: "app_vip_level_up"
+      fields:
+        - "app_id"
+        - "game_id"
+        - "role_id"
+        - "server_id"
+        - "current_vip_level"
+        - "postfix"
+        - "#zone_offset"
+
+# RFM Analysis Thresholds
+# Used for criteria: Recency/Frequency/Monetary is [Low|Medium|High]
+rfm:
+  currency: "VND"
+  
+  # Recency: days since last purchase
+  # Low = purchased > 30 days ago (dormant)
+  # Medium = purchased 7-30 days ago
+  # High = purchased within 7 days (recent buyer)
+  recency:
+    low_max: 30      # < 30 days = not Low
+    high_min: 7      # <= 7 days = High (note: lower is better for recency)
+  
+  # Frequency: total number of purchases
+  # Low = less than 2 purchases
+  # Medium = 2-10 purchases
+  # High = more than 10 purchases
+  frequency:
+    low_max: 2       # < 2 purchases = Low
+    high_min: 10     # >= 10 purchases = High
+  
+  # Monetary: total spend in VND
+  # Low = spent less than 100,000 VND (~$4)
+  # Medium = spent 100,000 - 2,000,000 VND
+  # High = spent more than 2,000,000 VND (~$80)
+  monetary:
+    low_max: 100000       # < 100K VND = Low
+    high_min: 2000000     # >= 2M VND = High

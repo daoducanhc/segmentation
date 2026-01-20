@@ -205,11 +205,74 @@ func (g *SQLGenerator) generateConditionSQL(cond *v1.Condition) (string, error) 
 }
 
 // generateEventConditionSQL generates SQL for an event condition
+// Uses user_daily_activity for simple activity queries (faster)
+// Falls back to events table for complex property filters
 func (g *SQLGenerator) generateEventConditionSQL(eventCond *v1.EventCondition) (string, error) {
 	if eventCond == nil {
 		return "", nil
 	}
 
+	// Check if we can use the optimized daily activity table
+	// Use daily activity for: any event (*), login, pay - without complex property filters
+	hasPropertyFilter := eventCond.PropertyFilter != nil &&
+		(len(eventCond.PropertyFilter.Conditions) > 0 || len(eventCond.PropertyFilter.Groups) > 0)
+
+	canUseDailyTable := !hasPropertyFilter &&
+		(eventCond.EventName == "*" || eventCond.EventName == "" ||
+			eventCond.EventName == "login" || eventCond.EventName == "pay")
+
+	if canUseDailyTable {
+		return g.generateActivityConditionSQL(eventCond)
+	}
+
+	// Fall back to events table for complex queries
+	return g.generateRawEventConditionSQL(eventCond)
+}
+
+// generateActivityConditionSQL uses user_daily_activity for optimized queries
+func (g *SQLGenerator) generateActivityConditionSQL(eventCond *v1.EventCondition) (string, error) {
+	var whereParts []string
+
+	// Time window (lookback days)
+	if eventCond.LookbackDays > 0 {
+		whereParts = append(whereParts, fmt.Sprintf("activity_date >= today() - %d", eventCond.LookbackDays))
+	}
+
+	whereClause := "1=1"
+	if len(whereParts) > 0 {
+		whereClause = strings.Join(whereParts, " AND ")
+	}
+
+	// Determine which metric to aggregate based on event type
+	var havingClause string
+	op := g.comparisonOperatorToSQL(eventCond.CountOperator)
+	if op == "" || op == "=" {
+		op = ">="
+	}
+
+	switch eventCond.EventName {
+	case "login":
+		// Use login_count from daily activity
+		havingClause = fmt.Sprintf("sum(login_count) %s %d", op, eventCond.CountValue)
+	case "pay":
+		// Use purchase_count from daily activity
+		havingClause = fmt.Sprintf("sum(purchase_count) %s %d", op, eventCond.CountValue)
+	default:
+		// For any event (*) or empty, use event_count
+		havingClause = fmt.Sprintf("sum(event_count) %s %d", op, eventCond.CountValue)
+	}
+
+	return fmt.Sprintf(`
+				SELECT user_id
+				FROM %s
+				WHERE %s
+				GROUP BY user_id
+				HAVING %s`, g.activityTable, whereClause, havingClause), 
+			nil
+}
+
+// generateRawEventConditionSQL uses events table for complex queries
+func (g *SQLGenerator) generateRawEventConditionSQL(eventCond *v1.EventCondition) (string, error) {
 	var whereParts []string
 
 	// Event name filter
