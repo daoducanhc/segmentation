@@ -2095,7 +2095,14 @@ func (x *GetSegmentUserCountResponse) GetCountedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-// UploadStaticSegmentRequest - for creating static segment from file data
+// UploadStaticSegmentRequest - for creating static segment from file data.
+// For JSON API: use file_content (base64) + file_name + header_name
+// For Form upload: POST /v1/segments/upload-file with multipart form:
+//   - file: the CSV/Excel file
+//   - name: segment name (required)
+//   - header_name: column name for user IDs (required)
+//   - description: optional
+//   - created_by: optional
 type UploadStaticSegmentRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -2103,7 +2110,7 @@ type UploadStaticSegmentRequest struct {
 
 	Name        string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                  // Required: Segment name
 	Description string   `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`                    // Optional: Segment description
-	FileContent string   `protobuf:"bytes,3,opt,name=file_content,json=fileContent,proto3" json:"file_content,omitempty"` // Base64 encoded file content
+	FileContent string   `protobuf:"bytes,3,opt,name=file_content,json=fileContent,proto3" json:"file_content,omitempty"` // Base64 encoded file content (for JSON API)
 	FileName    string   `protobuf:"bytes,4,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`          // File name with extension (e.g. "users.csv", "data.xlsx")
 	HeaderName  string   `protobuf:"bytes,5,opt,name=header_name,json=headerName,proto3" json:"header_name,omitempty"`    // Required: Column name containing user IDs
 	CreatedBy   string   `protobuf:"bytes,6,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`       // Optional: Creator identifier

@@ -383,11 +383,18 @@ message GetSegmentUserCountResponse {
   google.protobuf.Timestamp counted_at = 2;
 }
 
-// UploadStaticSegmentRequest - for creating static segment from file data
+// UploadStaticSegmentRequest - for creating static segment from file data.
+// For JSON API: use file_content (base64) + file_name + header_name
+// For Form upload: POST /v1/segments/upload-file with multipart form:
+//   - file: the CSV/Excel file
+//   - name: segment name (required)
+//   - header_name: column name for user IDs (required)
+//   - description: optional
+//   - created_by: optional
 message UploadStaticSegmentRequest {
   string name = 1; // Required: Segment name
   string description = 2; // Optional: Segment description
-  string file_content = 3; // Base64 encoded file content
+  string file_content = 3; // Base64 encoded file content (for JSON API)
   string file_name = 4; // File name with extension (e.g. "users.csv", "data.xlsx")
   string header_name = 5; // Required: Column name containing user IDs
   string created_by = 6; // Optional: Creator identifier

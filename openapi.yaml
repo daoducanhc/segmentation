@@ -657,7 +657,7 @@ components:
                     type: array
                     items:
                         type: string
-            description: UploadStaticSegmentRequest - for creating static segment from file data
+            description: 'UploadStaticSegmentRequest - for creating static segment from file data. For JSON API: use file_content (base64) + file_name + header_name For Form upload: POST /v1/segments/upload-file with multipart form:   - file: the CSV/Excel file   - name: segment name (required)   - header_name: column name for user IDs (required)   - description: optional   - created_by: optional'
         api.segment.v1.UploadStaticSegmentResponse:
             type: object
             properties:
