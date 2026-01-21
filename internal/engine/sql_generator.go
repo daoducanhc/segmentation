@@ -13,6 +13,7 @@ type SQLGenerator struct {
 	eventsTable   string
 	usersTable    string
 	activityTable string
+	summaryTable  string // Pre-computed rolling windows (7d, 30d, 90d)
 }
 
 // NewSQLGenerator creates a new SQL generator
@@ -21,6 +22,7 @@ func NewSQLGenerator() *SQLGenerator {
 		eventsTable:   "segmentation.events",
 		usersTable:    "segmentation.users",
 		activityTable: "segmentation.user_daily_activity",
+		summaryTable:  "segmentation.user_activity_summary",
 	}
 }
 
@@ -229,8 +231,99 @@ func (g *SQLGenerator) generateEventConditionSQL(eventCond *v1.EventCondition) (
 	return g.generateRawEventConditionSQL(eventCond)
 }
 
-// generateActivityConditionSQL uses user_daily_activity for optimized queries
+// generateActivityConditionSQL uses optimized tables based on lookback days
+// - Predefined (7, 30, 90 days): uses flags (is_active_7d, etc.) - FAST
+// - Everything else: uses daily activity table - Good enough
 func (g *SQLGenerator) generateActivityConditionSQL(eventCond *v1.EventCondition) (string, error) {
+	// Check if we can use pre-computed flags for predefined lookback days
+	if g.canUseSummaryTable(eventCond) {
+		return g.generateSummaryConditionSQL(eventCond)
+	}
+
+	// Use daily activity table for custom lookback days or complex queries
+	return g.generateDailyActivityConditionSQL(eventCond)
+}
+
+// canUseSummaryTable checks if we can use the pre-computed summary table
+func (g *SQLGenerator) canUseSummaryTable(eventCond *v1.EventCondition) bool {
+	// Only predefined windows (7, 30, 90 days) have pre-computed flags
+	isPredefinedWindow := eventCond.LookbackDays == 7 ||
+		eventCond.LookbackDays == 30 ||
+		eventCond.LookbackDays == 90
+
+	if !isPredefinedWindow {
+		return false
+	}
+
+	// For churned criteria, we check for "no activity" so count condition doesn't apply
+	if eventCond.EventName == "churned" {
+		return true
+	}
+
+	// For activity/PU, only simple count >= 1 condition
+	if eventCond.CountOperator != v1.ComparisonOperator_COMPARISON_OPERATOR_GTE {
+		return false
+	}
+	if eventCond.CountValue != 1 {
+		return false
+	}
+
+	return true
+}
+
+// generateSummaryConditionSQL uses pre-computed user_activity_summary (FAST)
+// Supports: Activity (A7/A30/A90), Paying User (PU7/PU30/PU90), Churned
+func (g *SQLGenerator) generateSummaryConditionSQL(eventCond *v1.EventCondition) (string, error) {
+	var condition string
+
+	switch eventCond.EventName {
+	case "pay":
+		// Paying user criteria
+		switch eventCond.LookbackDays {
+		case 7:
+			condition = "is_pu_7d = 1"
+		case 30:
+			condition = "is_pu_30d = 1"
+		case 90:
+			condition = "is_pu_90d = 1"
+		default:
+			return "", fmt.Errorf("unsupported lookback days for PU: %d", eventCond.LookbackDays)
+		}
+	case "churned":
+		// Churned criteria (no activity in N+ days)
+		switch eventCond.LookbackDays {
+		case 7:
+			condition = "is_churned_7d = 1"
+		case 30:
+			condition = "is_churned_30d = 1"
+		case 90:
+			condition = "is_churned_90d = 1"
+		default:
+			return "", fmt.Errorf("unsupported lookback days for churned: %d", eventCond.LookbackDays)
+		}
+	default:
+		// Activity criteria (app_page_view or any event)
+		switch eventCond.LookbackDays {
+		case 7:
+			condition = "is_active_7d = 1"
+		case 30:
+			condition = "is_active_30d = 1"
+		case 90:
+			condition = "is_active_90d = 1"
+		default:
+			return "", fmt.Errorf("unsupported lookback days for activity: %d", eventCond.LookbackDays)
+		}
+	}
+
+	// Use FINAL to get deduplicated results from ReplacingMergeTree
+	return fmt.Sprintf(`
+				SELECT user_id
+				FROM %s FINAL
+				WHERE %s`, g.summaryTable, condition), nil
+}
+
+// generateDailyActivityConditionSQL uses user_daily_activity for custom lookback
+func (g *SQLGenerator) generateDailyActivityConditionSQL(eventCond *v1.EventCondition) (string, error) {
 	var whereParts []string
 
 	// Time window (lookback days)
@@ -251,7 +344,7 @@ func (g *SQLGenerator) generateActivityConditionSQL(eventCond *v1.EventCondition
 	}
 
 	switch eventCond.EventName {
-	case "login":
+	case "app_page_view":
 		// Use login_count from daily activity
 		havingClause = fmt.Sprintf("sum(login_count) %s %d", op, eventCond.CountValue)
 	case "pay":
@@ -267,8 +360,7 @@ func (g *SQLGenerator) generateActivityConditionSQL(eventCond *v1.EventCondition
 				FROM %s
 				WHERE %s
 				GROUP BY user_id
-				HAVING %s`, g.activityTable, whereClause, havingClause), 
-			nil
+				HAVING %s`, g.activityTable, whereClause, havingClause), nil
 }
 
 // generateRawEventConditionSQL uses events table for complex queries

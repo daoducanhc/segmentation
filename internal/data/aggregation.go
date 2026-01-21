@@ -22,8 +22,8 @@ func NewAggregationRepo(data *Data, logger log.Logger) *AggregationRepo {
 	}
 }
 
-// RefreshUserActivitySummary computes rolling activity windows for all users
-// This should be run periodically (e.g., daily or hourly)
+// RefreshUserActivitySummary computes predefined activity/PU/churn flags
+// This should be run periodically (e.g., daily)
 func (r *AggregationRepo) RefreshUserActivitySummary(ctx context.Context) error {
 	r.log.Info("Starting user_activity_summary refresh")
 	start := time.Now()
@@ -31,25 +31,25 @@ func (r *AggregationRepo) RefreshUserActivitySummary(ctx context.Context) error 
 	// Insert new summary rows - ReplacingMergeTree will handle deduplication
 	query := `
 		INSERT INTO segmentation.user_activity_summary
-		(user_id, days_active_7d, days_active_30d, days_active_90d,
-		 last_activity_date, days_since_last_activity,
-		 revenue_7d, revenue_30d, is_active_7d, is_active_30d, is_churned, computed_at)
+		(user_id, 
+		 is_active_7d, is_active_30d, is_active_90d,
+		 is_pu_7d, is_pu_30d, is_pu_90d,
+		 is_churned_7d, is_churned_30d, is_churned_90d,
+		 computed_at)
 		SELECT
 			user_id,
-			-- Days active in windows
-			toUInt8(countIf(activity_date >= today() - 7)) AS days_active_7d,
-			toUInt8(countIf(activity_date >= today() - 30)) AS days_active_30d,
-			toUInt8(countIf(activity_date >= today() - 90)) AS days_active_90d,
-			-- Last activity
-			max(activity_date) AS last_activity_date,
-			toUInt16(dateDiff('day', max(activity_date), today())) AS days_since_last_activity,
-			-- Revenue windows
-			sumIf(revenue, activity_date >= today() - 7) AS revenue_7d,
-			sumIf(revenue, activity_date >= today() - 30) AS revenue_30d,
-			-- Flags
+			-- Activity flags (had any activity in window)
 			toUInt8(countIf(activity_date >= today() - 7) > 0) AS is_active_7d,
 			toUInt8(countIf(activity_date >= today() - 30) > 0) AS is_active_30d,
-			toUInt8(dateDiff('day', max(activity_date), today()) > 30) AS is_churned,
+			toUInt8(countIf(activity_date >= today() - 90) > 0) AS is_active_90d,
+			-- Paying user flags (made purchase in window)
+			toUInt8(sumIf(purchase_count, activity_date >= today() - 7) > 0) AS is_pu_7d,
+			toUInt8(sumIf(purchase_count, activity_date >= today() - 30) > 0) AS is_pu_30d,
+			toUInt8(sumIf(purchase_count, activity_date >= today() - 90) > 0) AS is_pu_90d,
+			-- Churn flags (no activity in N+ days)
+			toUInt8(dateDiff('day', max(activity_date), today()) >= 7) AS is_churned_7d,
+			toUInt8(dateDiff('day', max(activity_date), today()) >= 30) AS is_churned_30d,
+			toUInt8(dateDiff('day', max(activity_date), today()) >= 90) AS is_churned_90d,
 			now64(3) AS computed_at
 		FROM segmentation.user_daily_activity
 		GROUP BY user_id

@@ -170,23 +170,20 @@ CREATE TABLE IF NOT EXISTS segmentation.user_activity_summary
 (
     user_id String,
     
-    -- Last N days activity
-    days_active_7d UInt8,
-    days_active_30d UInt8,
-    days_active_90d UInt8,
+    -- Activity flags (predefined lookback windows)
+    is_active_7d UInt8,     -- A7: had activity in last 7 days
+    is_active_30d UInt8,    -- A30: had activity in last 30 days
+    is_active_90d UInt8,    -- A90: had activity in last 90 days
     
-    -- Last activity
-    last_activity_date Date,
-    days_since_last_activity UInt16,
+    -- Paying user flags (predefined lookback windows)
+    is_pu_7d UInt8,         -- PU7: made purchase in last 7 days
+    is_pu_30d UInt8,        -- PU30: made purchase in last 30 days
+    is_pu_90d UInt8,        -- PU90: made purchase in last 90 days
     
-    -- Revenue windows
-    revenue_7d Float64,
-    revenue_30d Float64,
-    
-    -- Flags
-    is_active_7d UInt8,     -- A7: active in last 7 days
-    is_active_30d UInt8,    -- A30: active in last 30 days
-    is_churned UInt8,       -- No activity in 30+ days
+    -- Churn flags (predefined inactivity windows)
+    is_churned_7d UInt8,    -- No activity in 7+ days
+    is_churned_30d UInt8,   -- No activity in 30+ days
+    is_churned_90d UInt8,   -- No activity in 90+ days
     
     -- Update tracking
     computed_at DateTime64(3) DEFAULT now64(3)
