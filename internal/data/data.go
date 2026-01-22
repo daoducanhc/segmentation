@@ -1,3 +1,4 @@
+// Package data provides the data access layer for ClickHouse.
 package data
 
 import (
@@ -13,7 +14,7 @@ import (
 	"segmentation/internal/conf"
 )
 
-// Data manages database connections
+// Data manages ClickHouse database connections.
 type Data struct {
 	clickhouse driver.Conn
 	log        *log.Helper

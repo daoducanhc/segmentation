@@ -1,12 +1,22 @@
+// Package conf defines configuration structures for the application.
 package conf
 
-// Bootstrap holds all configuration
+// Bootstrap holds all application configuration.
 type Bootstrap struct {
-	Server       *Server       `yaml:"server" json:"server"`
-	Data         *Data         `yaml:"data" json:"data"`
-	Kafka        *Kafka        `yaml:"kafka" json:"kafka"`
-	ThinkingData *ThinkingData `yaml:"thinkingdata" json:"thinkingdata"`
-	RFM          *RFMConfig    `yaml:"rfm" json:"rfm"`
+	Server       *Server          `yaml:"server" json:"server"`
+	Data         *Data            `yaml:"data" json:"data"`
+	Kafka        *Kafka           `yaml:"kafka" json:"kafka"`
+	ThinkingData *ThinkingData    `yaml:"thinkingdata" json:"thinkingdata"`
+	RFM          *RFMConfig       `yaml:"rfm" json:"rfm"`
+	Scheduler    *SchedulerConfig `yaml:"scheduler" json:"scheduler"`
+}
+
+// SchedulerConfig holds aggregation refresh scheduler configuration
+type SchedulerConfig struct {
+	Enabled                   bool  `yaml:"enabled" json:"enabled"`
+	IncrementalRefreshMinutes int32 `yaml:"incremental_refresh_minutes" json:"incremental_refresh_minutes"` // How often to run incremental refresh (default: 10)
+	IncrementalDays           int32 `yaml:"incremental_days" json:"incremental_days"`                       // Days to include in incremental (default: 7)
+	FullRefreshHour           int32 `yaml:"full_refresh_hour" json:"full_refresh_hour"`                     // Hour (0-23) for daily full refresh (default: 3)
 }
 
 // RFMConfig holds RFM analysis thresholds

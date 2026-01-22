@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -16,6 +17,7 @@ import (
 	"segmentation/internal/consumer"
 	"segmentation/internal/data"
 	"segmentation/internal/engine"
+	"segmentation/internal/scheduler"
 	"segmentation/internal/server"
 	"segmentation/internal/service"
 	"segmentation/pkg/configx"
@@ -109,6 +111,28 @@ func main() {
 		tdSync = consumer.NewThinkingDataSync(bc.ThinkingData, eventRepo, aggregationRepo, logger)
 	}
 
+	// Initialize scheduler for periodic aggregation refresh
+	var refreshScheduler *scheduler.Scheduler
+	if bc.Scheduler != nil && bc.Scheduler.Enabled {
+		schedulerConfig := &scheduler.Config{
+			Enabled:         true,
+			IncrementalDays: int(bc.Scheduler.IncrementalDays),
+			FullRefreshHour: int(bc.Scheduler.FullRefreshHour),
+		}
+		if bc.Scheduler.IncrementalRefreshMinutes > 0 {
+			schedulerConfig.IncrementalRefreshInterval = time.Duration(bc.Scheduler.IncrementalRefreshMinutes) * time.Minute
+		} else {
+			schedulerConfig.IncrementalRefreshInterval = 10 * time.Minute
+		}
+		if schedulerConfig.IncrementalDays <= 0 {
+			schedulerConfig.IncrementalDays = 7
+		}
+		if schedulerConfig.FullRefreshHour < 0 || schedulerConfig.FullRefreshHour > 23 {
+			schedulerConfig.FullRefreshHour = 3
+		}
+		refreshScheduler = scheduler.NewScheduler(schedulerConfig, aggregationRepo, logger)
+	}
+
 	// Create Kratos app
 	app := kratos.New(
 		kratos.Name("segmentation"),
@@ -136,6 +160,14 @@ func main() {
 			log.NewHelper(logger).Errorf("failed to start ThinkingData sync: %v", err)
 		}
 		defer tdSync.Stop()
+	}
+
+	// Start scheduler (handles periodic aggregation refresh)
+	if refreshScheduler != nil {
+		if err := refreshScheduler.Start(ctx); err != nil {
+			log.NewHelper(logger).Errorf("failed to start scheduler: %v", err)
+		}
+		defer refreshScheduler.Stop()
 	}
 
 	// Handle shutdown signals

@@ -1,3 +1,4 @@
+// Package engine provides the segment evaluation engine.
 package engine
 
 import (
@@ -11,7 +12,7 @@ import (
 	"segmentation/internal/data"
 )
 
-// Evaluator handles segment evaluation
+// Evaluator executes segment queries and manages evaluation results.
 type Evaluator struct {
 	generator   *SQLGenerator
 	segmentRepo *data.SegmentRepo

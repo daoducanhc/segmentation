@@ -60,8 +60,10 @@ ALTER TABLE segmentation.users ADD INDEX idx_is_pu is_paying_user TYPE set(2) GR
 -- =============================================================================
 -- Event stream from ThinkingData
 -- Optimized for Phase 1 criteria: Activity, Monetization, RFM, Profile
+-- Uses ReplacingMergeTree for deduplication (TD fetch + Kafka can have duplicates)
 CREATE TABLE IF NOT EXISTS segmentation.events
 (
+    -- Composite unique key: user + app + event + time + revenue
     user_id String,
     app_id LowCardinality(String),            -- Game/app identifier
     event_name LowCardinality(String),        -- e.g., 'app_page_view', 'pay', 'app_vip_level_up'
@@ -88,9 +90,9 @@ CREATE TABLE IF NOT EXISTS segmentation.events
     -- Partition key
     event_date Date DEFAULT toDate(event_time)
 )
-ENGINE = MergeTree()
+ENGINE = ReplacingMergeTree(received_at)
 PARTITION BY toYYYYMM(event_date)
-ORDER BY (app_id, event_name, user_id, event_time)
+ORDER BY (app_id, user_id, event_name, event_time, revenue)
 TTL event_date + INTERVAL 365 DAY
 SETTINGS index_granularity = 8192;
 
@@ -102,9 +104,10 @@ ALTER TABLE segmentation.events ADD INDEX idx_country country TYPE set(300) GRAN
 ALTER TABLE segmentation.events ADD INDEX idx_payment_channel payment_channel TYPE set(5) GRANULARITY 4;
 
 -- =============================================================================
--- MATERIALIZED VIEW: Daily User Activity
+-- DAILY USER ACTIVITY TABLE
 -- =============================================================================
 -- Pre-aggregated daily activity for A1/A3/A7/A30 and RFM calculations
+-- NOTE: Populated via scheduled job (not MV) to ensure deduplication from events table
 CREATE TABLE IF NOT EXISTS segmentation.user_daily_activity
 (
     user_id String,
@@ -128,39 +131,30 @@ CREATE TABLE IF NOT EXISTS segmentation.user_daily_activity
     google_purchase_count UInt32,             -- Purchases via Google Play
     apple_purchase_count UInt32,              -- Purchases via Apple App Store
     third_party_purchase_count UInt32,        -- Purchases via 3rd party (ZaloPay/Dana)
-    max_vip_level SimpleAggregateFunction(max, UInt8),  -- Highest VIP level reached (max, not sum)
+    max_vip_level UInt8,                      -- Highest VIP level reached
     
     -- Event breakdown
-    event_counts Map(LowCardinality(String), UInt32)
+    event_counts Map(LowCardinality(String), UInt32),
+    
+    -- Update tracking
+    updated_at DateTime64(3) DEFAULT now64(3)
 )
-ENGINE = SummingMergeTree()
+ENGINE = ReplacingMergeTree(updated_at)
 PARTITION BY toYYYYMM(activity_date)
 ORDER BY (app_id, user_id, activity_date);
 
--- Materialized view to populate daily activity
--- NOTE: Use table alias 'e' to avoid column name conflicts with target table
-CREATE MATERIALIZED VIEW IF NOT EXISTS segmentation.mv_user_daily_activity
-TO segmentation.user_daily_activity
-AS SELECT
-    e.user_id AS user_id,
-    e.app_id AS app_id,
-    toDate(e.event_time) AS activity_date,
-    any(e.platform) AS platform,
-    any(e.country) AS country,
-    any(e.language) AS language,
-    any(e.os) AS os,
-    toUInt32(countIf(e.event_name = 'app_page_view')) AS login_count,
-    toUInt32(count()) AS event_count,
-    sum(e.revenue) AS revenue,
-    toUInt32(countIf(e.revenue > 0)) AS purchase_count,
-    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = 'webshop')) AS webshop_purchase_count,
-    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = 'google')) AS google_purchase_count,
-    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = 'apple')) AS apple_purchase_count,
-    toUInt32(countIf(e.revenue > 0 AND e.payment_channel = '3rd_party')) AS third_party_purchase_count,
-    toUInt8(max(e.vip_level)) AS max_vip_level,
-    sumMap(map(e.event_name, toUInt32(1))) AS event_counts
-FROM segmentation.events AS e
-GROUP BY e.user_id, e.app_id, toDate(e.event_time);
+-- =============================================================================
+-- REFRESH DAILY ACTIVITY PROCEDURE
+-- =============================================================================
+-- Run this after each TD sync or Kafka batch to rebuild daily aggregates
+-- Uses FINAL to read deduplicated events
+-- 
+-- Example usage (run via scheduled job or after sync):
+-- INSERT INTO segmentation.user_daily_activity
+-- SELECT ... FROM segmentation.events FINAL WHERE event_date >= today() - 7
+-- GROUP BY user_id, app_id, toDate(event_time);
+--
+-- Or use the helper view below with FINAL modifier
 
 -- =============================================================================
 -- MATERIALIZED VIEW: User Activity Summary (Rolling Windows)
@@ -418,10 +412,12 @@ CREATE VIEW IF NOT EXISTS segmentation.v_user_profiles AS
 SELECT 
     user_id,
     app_id,
-    argMax(platform, activity_date) as platform,
-    argMax(country, activity_date) as country,
-    argMax(language, activity_date) as language,
-    argMax(os, activity_date) as os,
+    -- All unique values seen (historical)
+    groupArray(DISTINCT platform) as platforms,
+    groupArray(DISTINCT country) as countries,
+    groupArray(DISTINCT language) as languages,
+    groupArray(DISTINCT os) as os_list,
+    -- Time ranges
     min(activity_date) as first_active_date,
     max(activity_date) as last_active_date,
     dateDiff('day', min(activity_date), today()) as account_age_days

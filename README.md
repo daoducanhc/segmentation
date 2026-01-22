@@ -4,57 +4,44 @@ A high-performance, event-based user segmentation engine built with Go, Kratos f
 
 ## Features
 
-- **Criteria Library**: Predefined criteria (A7, A30, PU, Platform, Country, Churned, etc.)
-- **Flexible Segments**: Combine criteria with AND/OR/NOT logic to create segments
-- **Parent-Child Segments**: Composite segments that combine multiple child segments
+- **Criteria Library**: Predefined criteria (A7, A30, PU, RFM, Platform, Country, Churned, etc.)
+- **Flexible Segments**: Combine criteria with AND/OR/NOT logic
+- **Real-time Ready**: Kafka integration for real-time event ingestion
 - **High Performance**: ClickHouse-powered analytics for ~2M users
-- **Event Streaming**: Kafka integration for real-time event ingestion
-- **Data Sync**: MySQL synchronization for user data
 - **REST & gRPC APIs**: Dual-protocol support via Kratos
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Clients                                  │
-│                    (REST / gRPC API)                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Kratos Server                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ HTTP Server │  │ gRPC Server │  │    Segment Service      │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Segment Engine                              │
-│  ┌────────────────┐  ┌────────────────┐  ┌──────────────────┐   │
-│  │ SQL Generator  │  │   Evaluator    │  │ Criteria Library │   │
-│  └────────────────┘  └────────────────┘  └──────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Data Layer                                │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                     ClickHouse                            │   │
-│  │  - users (ReplacingMergeTree)                            │   │
-│  │  - events (MergeTree, partitioned by month)              │   │
-│  │  - user_daily_activity (SummingMergeTree)                │   │
-│  │  - segment_definitions (ReplacingMergeTree)              │   │
-│  │  - segment_results (ReplacingMergeTree)                  │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-       ┌──────────────────────┼──────────────────────┐
-       ▼                      ▼                      ▼
-┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-│    Kafka    │       │    MySQL    │       │ ThinkingData│
-│   Events    │       │  User Sync  │       │   (Future)  │
-└─────────────┘       └─────────────┘       └─────────────┘
+┌─────────────────┐     ┌─────────────────┐
+│  ThinkingData   │     │     Kafka       │
+│   (TD Sync)     │     │   (Real-time)   │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         └───────────┬───────────┘
+                     ▼
+         ┌───────────────────────┐
+         │    events table       │  ReplacingMergeTree
+         │  (deduplicated raw)   │  ORDER BY (app_id, user_id, event_name, event_time, revenue)
+         └───────────┬───────────┘
+                     │
+                     ▼  Scheduler (every 10 min)
+         ┌───────────────────────┐
+         │  user_daily_activity  │  Aggregated by user + date
+         └───────────┬───────────┘
+                     │
+         ┌───────────┴───────────┐
+         ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐
+│ activity_summary│    │     users       │
+│  (A7/A30/PU)    │    │   (profiles)    │
+└─────────────────┘    └─────────────────┘
+         │                       │
+         └───────────┬───────────┘
+                     ▼
+         ┌───────────────────────┐
+         │   Segment Evaluation  │  SQL Generation + Execution
+         └───────────────────────┘
 ```
 
 ## Quick Start
@@ -65,45 +52,122 @@ A high-performance, event-based user segmentation engine built with Go, Kratos f
 - Docker & Docker Compose
 - protoc (Protocol Buffer compiler)
 
-### Installation
+### Setup
 
-1. Clone and setup:
 ```bash
+# 1. Clone and setup
+git clone <repository>
 cd segmentation
 make init
-```
 
-2. Generate API code:
-```bash
+# 2. Generate API code
 make api
-```
 
-3. Start infrastructure:
-```bash
+# 3. Start infrastructure (ClickHouse, Kafka)
 make docker-compose-up
-```
 
-4. Run migrations:
-```bash
+# 4. Initialize database schema
 make migrate
-```
 
-5. Run the server:
-```bash
+# 5. Run the server
 make run
 ```
 
-## API Usage
+**Endpoints:**
+- REST API: http://localhost:8000
+- gRPC: localhost:9000
 
-### Create a Segment
+## Configuration
+
+### Main Config (`configs/config.yaml`)
+
+```yaml
+server:
+  http:
+    addr: 0.0.0.0:8000
+  grpc:
+    addr: 0.0.0.0:9000
+
+data:
+  clickhouse:
+    addr: localhost:9100
+    database: segmentation
+
+# Aggregation refresh scheduler
+scheduler:
+  enabled: true
+  incremental_refresh_minutes: 10  # How often to refresh
+  incremental_days: 7              # Days to include
+  full_refresh_hour: 3             # Daily full refresh at 3 AM
+
+# RFM thresholds
+rfm:
+  currency: "VND"
+  recency:
+    low_max: 30
+    high_min: 7
+  frequency:
+    low_max: 2
+    high_min: 10
+  monetary:
+    low_max: 100000
+    high_min: 2000000
+```
+
+### Environment Variables
+
+Create `.env` file (not committed to git):
 
 ```bash
-# Create A7 segment (active in last 7 days)
+# ThinkingData VN
+THINKINGDATA_VN_QUERY_URL=http://td-api.example.com:8992
+THINKINGDATA_VN_QUERY_TOKEN=your_token_here
+
+# ThinkingData Global
+THINKINGDATA_GLOBAL_QUERY_URL=http://td-global.example.com:8992
+THINKINGDATA_GLOBAL_QUERY_TOKEN=your_token_here
+```
+
+## Data Processing
+
+### Deduplication Strategy
+
+Events are deduplicated using ClickHouse's ReplacingMergeTree:
+
+```sql
+-- Composite key for deduplication
+ORDER BY (app_id, user_id, event_name, event_time, revenue)
+```
+
+**Query-time deduplication** via `FINAL` modifier ensures accuracy without expensive `OPTIMIZE TABLE FINAL` operations.
+
+### Scheduler Jobs
+
+| Job | Frequency | Description |
+|-----|-----------|-------------|
+| Incremental Refresh | Every 10 min | Refresh last 7 days of data |
+| Full Refresh | Daily 3 AM | Complete data refresh |
+
+No `OPTIMIZE TABLE FINAL` needed - ClickHouse merges automatically in background.
+
+### Timezone
+
+All date calculations use **Vietnam timezone (Asia/Ho_Chi_Minh, GMT+7)**:
+
+```sql
+toDate(event_time, 'Asia/Ho_Chi_Minh') AS activity_date
+```
+
+## API Examples
+
+### Create Segment
+
+```bash
+# A7 segment (active in last 7 days)
 curl -X POST http://localhost:8000/v1/segments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "A7 Users",
-    "description": "Users active in the last 7 days",
     "definition": {
       "type": "SEGMENT_TYPE_DYNAMIC",
       "event_conditions": [{
@@ -115,247 +179,106 @@ curl -X POST http://localhost:8000/v1/segments \
   }'
 ```
 
-### Create Composite Segment
-
-```bash
-# A7 AND PU (active paying users)
-curl -X POST http://localhost:8000/v1/segments \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Active Paying Users",
-    "description": "Paying users active in the last 7 days",
-    "definition": {
-      "type": "SEGMENT_TYPE_COMPOSITE",
-      "child_segments": [
-        {"segment_id": "a7-segment-id"},
-        {"segment_id": "pu-segment-id"}
-      ],
-      "child_logic": "LOGICAL_OPERATOR_AND"
-    }
-  }'
-```
-
-### Complex Segment with NOT
-
-```bash
-# A30 AND NOT churned (recently active users)
-curl -X POST http://localhost:8000/v1/segments \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Recently Active Non-Churned",
-    "definition": {
-      "type": "SEGMENT_TYPE_COMPOSITE",
-      "child_segments": [
-        {"segment_id": "a30-segment-id", "negated": false},
-        {"segment_id": "churned-segment-id", "negated": true}
-      ],
-      "child_logic": "LOGICAL_OPERATOR_AND"
-    }
-  }'
-```
-
 ### Evaluate Segment
 
 ```bash
-# Get user IDs for a segment
 curl -X POST http://localhost:8000/v1/segments/{id}/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "limit": 1000,
-    "offset": 0,
-    "force_refresh": false
-  }'
+  -d '{"limit": 1000}'
 ```
 
 ### Preview Segment
 
 ```bash
-# Preview without saving
 curl -X POST http://localhost:8000/v1/segments/preview \
-  -H "Content-Type: application/json" \
-  -d '{
-    "definition": {
-      "type": "SEGMENT_TYPE_DYNAMIC",
-      "user_conditions": {
-        "operator": "LOGICAL_OPERATOR_AND",
-        "conditions": [{
-          "field": "platform",
-          "operator": "COMPARISON_OPERATOR_EQ",
-          "value": {"string_value": "ios"}
-        }]
-      }
-    },
-    "limit": 100
-  }'
+  -d '{"definition": {...}, "limit": 100}'
 ```
 
-## Segment Definition Examples
+## Segment Criteria Reference
 
-### User Attribute Conditions
+| Criterion | Description | Performance |
+|-----------|-------------|-------------|
+| **A7, A30, A90** | Active in last N days | Sub-second |
+| **PU7, PU30, PU90** | Paying user in last N days | Sub-second |
+| **CHURNED_N** | No activity in N+ days | Sub-second |
+| **Custom Activity** | Activity in custom window | 1-2 seconds |
+| **PLATFORM** | User platform (app, web_mobile, web_pc) | Fast |
+| **COUNTRY** | User country code | Fast |
+| **RFM** | Recency/Frequency/Monetary buckets | Fast |
+| **Event Properties** | Custom event filters | 5-10 seconds |
 
-```json
-{
-  "type": "SEGMENT_TYPE_DYNAMIC",
-  "user_conditions": {
-    "operator": "LOGICAL_OPERATOR_AND",
-    "conditions": [
-      {
-        "field": "platform",
-        "operator": "COMPARISON_OPERATOR_IN",
-        "value": {"string_list": {"values": ["ios", "android"]}}
-      },
-      {
-        "field": "total_revenue",
-        "operator": "COMPARISON_OPERATOR_GTE",
-        "value": {"double_value": 50.0}
-      }
-    ]
-  }
-}
+## Profile Array Fields
+
+Profile fields (platform, country, language, os) support **multiple values** stored as comma-separated strings:
+
+```sql
+-- Query: platform = 'web_mobile'
+has(splitByChar(',', platform), 'web_mobile')
+
+-- Query: country IN ['VN', 'US']
+hasAny(splitByChar(',', country), ['VN', 'US'])
 ```
 
-### Event-Based Conditions
+## Project Structure
 
-```json
-{
-  "type": "SEGMENT_TYPE_DYNAMIC",
-  "event_conditions": [
-    {
-      "event_name": "purchase",
-      "lookback_days": 30,
-      "count_operator": "COMPARISON_OPERATOR_GTE",
-      "count_value": 3
-    },
-    {
-      "event_name": "app_open",
-      "lookback_days": 7,
-      "count_operator": "COMPARISON_OPERATOR_GTE",
-      "count_value": 5
-    }
-  ],
-  "event_logic": "LOGICAL_OPERATOR_AND"
-}
 ```
-
-### Combined Conditions
-
-```json
-{
-  "type": "SEGMENT_TYPE_DYNAMIC",
-  "user_conditions": {
-    "operator": "LOGICAL_OPERATOR_AND",
-    "conditions": [
-      {
-        "field": "is_paying_user",
-        "operator": "COMPARISON_OPERATOR_EQ",
-        "value": {"int_value": 1}
-      }
-    ]
-  },
-  "event_conditions": [
-    {
-      "lookback_days": 7,
-      "count_operator": "COMPARISON_OPERATOR_GTE",
-      "count_value": 1
-    }
-  ],
-  "overall_logic": "LOGICAL_OPERATOR_AND"
-}
+segmentation/
+├── api/segment/v1/       # Protobuf definitions & generated code
+├── cmd/server/           # Application entrypoint
+├── configs/              # Configuration files
+├── internal/
+│   ├── conf/             # Config structs
+│   ├── consumer/         # Kafka & ThinkingData consumers
+│   ├── data/             # Repository layer (ClickHouse)
+│   ├── engine/           # SQL generator & evaluator
+│   ├── scheduler/        # Aggregation refresh scheduler
+│   ├── server/           # HTTP & gRPC servers
+│   └── service/          # Business logic
+├── migrations/           # ClickHouse schema
+├── pkg/                  # Shared utilities
+└── third_party/          # Proto dependencies
 ```
-
-## Criteria vs Segments
-
-**Criteria** are building blocks (characteristics) that define user attributes:
-
-| Criterion | Description |
-|-----------|-------------|
-| A7 | Active in last 7 days |
-| A30 | Active in last 30 days |
-| PU | Paying Users |
-| NPU | Non-Paying Users |
-| CHURNED | No activity in N+ days |
-| HIGH_VALUE | Revenue > threshold |
-| NEW_USERS | Registered in last N days |
-| PLATFORM | Users on specific platform (ios, android, web) |
-| COUNTRY | Users from specific country |
-
-**Segments** are combinations of criteria using AND/OR/NOT logic:
-
-```go
-// Example: Active paying iOS users
-builder.BuildSegmentAND(
-    criteria.A7(),           // Active in 7 days
-    criteria.PayingUsers(),  // PU
-    criteria.Platform("ios"), // iOS platform
-)
-
-// Example: Mobile users (iOS OR Android)
-builder.BuildSegmentOR(
-    criteria.Platform("ios"),
-    criteria.Platform("android"),
-)
-
-// Example: Non-active users (NOT A30)
-builder.BuildSegmentNOT(criteria.A30())
-```
-
-## Configuration
-
-Edit `configs/config.yaml`:
-
-```yaml
-server:
-  http:
-    addr: 0.0.0.0:8000
-  grpc:
-    addr: 0.0.0.0:9000
-
-data:
-  clickhouse:
-    addr: clickhouse:9000
-    database: segmentation
-    max_open_conns: 10
-
-kafka:
-  brokers:
-    - kafka:9092
-  topic: user_events
-  batch_size: 1000
-
-mysql:
-  dsn: "user:password@tcp(mysql:3306)/app"
-  sync_interval_minutes: 5
-```
-
-## Scale Considerations
-
-- **~2M users**: ClickHouse handles this scale easily
-- **A7 ≈ 100k, A30 ≈ 400k**: Pre-computed materialized views
-- **Low concurrency (3-5 operators)**: No special optimization needed
-- **Event ingestion**: Kafka batching with configurable batch size
-
-## Performance Tips
-
-1. Use `force_refresh: false` to leverage cached results
-2. Composite segments cache child results
-3. Materialized views pre-aggregate daily activity
-4. Segment evaluation results are cached for 5 minutes
 
 ## Development
 
 ```bash
+# Build
+make build
+
 # Run tests
 make test
 
-# Run linter
-make lint
+# Generate API from proto
+make api
 
-# Build binary
-make build
+# Run locally
+make run
 
-# Build Docker image
+# Docker build
 make docker
 ```
+
+## Production Deployment
+
+### Resource Requirements
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| Memory | 4GB | 8GB |
+| CPU | 2 cores | 4 cores |
+| Disk | 50GB | 100GB+ |
+
+ClickHouse requirements:
+- Memory: 8-16GB
+- CPU: 4-8 cores
+- Disk: SSD recommended
+
+### Performance Expectations
+
+| Scale | Query Performance |
+|-------|-------------------|
+| 2M users | All queries < 5 seconds |
+| A7 segment (~100k users) | Sub-second |
+| Complex composite segments | 3-5 seconds |
 
 ## License
 

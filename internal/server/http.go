@@ -1,3 +1,4 @@
+// Package server provides HTTP and gRPC server implementations.
 package server
 
 import (
@@ -17,7 +18,7 @@ import (
 	"segmentation/internal/service"
 )
 
-// NewHTTPServer creates a new HTTP server
+// NewHTTPServer creates a new HTTP server with REST endpoints.
 func NewHTTPServer(c *conf.Server, segmentSvc *service.SegmentService, logger log.Logger) *kratoshttp.Server {
 	var opts = []kratoshttp.ServerOption{
 		kratoshttp.Middleware(

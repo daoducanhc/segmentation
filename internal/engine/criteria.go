@@ -1,3 +1,4 @@
+// Package engine provides the segment evaluation engine.
 package engine
 
 import (
@@ -6,8 +7,8 @@ import (
 	v1 "segmentation/api/segment/v1"
 )
 
-// Criterion represents a single filtering criterion (e.g., A7, A30, PU, Platform)
-// Criteria are the building blocks - segments are combinations of criteria using AND/OR/NOT
+// Criterion represents a single filtering criterion (e.g., A7, A30, PU, Platform).
+// Criteria are the building blocks - segments combine criteria using AND/OR/NOT.
 type Criterion struct {
 	Name           string
 	Description    string
@@ -15,9 +16,7 @@ type Criterion struct {
 	EventCondition *v1.EventCondition
 }
 
-// CriteriaLibrary provides factory functions for predefined criteria
-// Criteria are building blocks (A7, A30, PU, Platform, etc.)
-// Segments are combinations of criteria using AND/OR/NOT logic
+// CriteriaLibrary provides factory methods for predefined criteria.
 type CriteriaLibrary struct{}
 
 // NewCriteriaLibrary creates a new CriteriaLibrary instance

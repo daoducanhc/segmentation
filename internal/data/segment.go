@@ -1,3 +1,4 @@
+// Package data provides the data access layer for ClickHouse.
 package data
 
 import (
@@ -12,8 +13,7 @@ import (
 	v1 "segmentation/api/segment/v1"
 )
 
-// Segment represents a segment in the database
-// Segments are combinations of criteria (A7, A30, PU, Platform, etc.) using AND/OR/NOT logic
+// Segment represents a segment definition in the database.
 type Segment struct {
 	ID            string
 	Name          string
@@ -24,12 +24,12 @@ type Segment struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	IsActive      bool
-	ExpiresAt     *time.Time // Segment expiration date, nil = never expires
+	ExpiresAt     *time.Time
 	CachedCount   int64
 	LastEvaluated *time.Time
 }
 
-// SegmentRepo handles segment data operations
+// SegmentRepo handles segment CRUD and query operations.
 type SegmentRepo struct {
 	data *Data
 	log  *log.Helper

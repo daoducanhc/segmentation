@@ -1,3 +1,4 @@
+// Package server provides HTTP and gRPC server implementations.
 package server
 
 import (
@@ -13,7 +14,7 @@ import (
 	"segmentation/internal/service"
 )
 
-// NewGRPCServer creates a new gRPC server
+// NewGRPCServer creates a new gRPC server.
 func NewGRPCServer(c *conf.Server, segmentService *service.SegmentService, logger log.Logger) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(

@@ -1,3 +1,4 @@
+// Package data provides the data access layer for ClickHouse.
 package data
 
 import (
@@ -9,13 +10,13 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// User represents a user in the database
+// User represents a user profile in the database.
 type User struct {
 	UserID           string
-	Platform         string // web_mobile, web_pc, app
+	Platform         string
 	Country          string
 	Language         string
-	OS               string // iOS, Android, etc.
+	OS               string
 	FirstSeenAt      time.Time
 	LastSeenAt       time.Time
 	RegisteredAt     *time.Time
@@ -30,7 +31,7 @@ type User struct {
 	UpdatedAt        time.Time
 }
 
-// UserRepo handles user data operations
+// UserRepo handles user data operations.
 type UserRepo struct {
 	data *Data
 	log  *log.Helper

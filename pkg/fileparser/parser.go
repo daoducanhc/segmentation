@@ -1,3 +1,4 @@
+// Package fileparser provides utilities for parsing CSV/Excel files.
 package fileparser
 
 import (
@@ -11,12 +12,12 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// ParseResult contains the result of parsing a file
+// ParseResult contains the result of parsing a file.
 type ParseResult struct {
 	UserIDs      []string
 	Skipped      int
 	Errors       []string
-	DetectedType string // The file type that was detected
+	DetectedType string
 }
 
 // ParseFile parses a base64 encoded file (CSV or Excel) and extracts user IDs from specified column

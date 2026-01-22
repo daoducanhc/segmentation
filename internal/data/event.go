@@ -1,3 +1,4 @@
+// Package data provides the data access layer for ClickHouse.
 package data
 
 import (
@@ -9,8 +10,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// Event represents an event in the database
-// Aligned with Phase 1 criteria: Activity, Monetization, RFM, Profile
+// Event represents a user event in the database.
 type Event struct {
 	UserID    string
 	AppID     string
@@ -18,25 +18,25 @@ type Event struct {
 	EventTime time.Time
 
 	// Profile/Demographic
-	Platform string // web_mobile, web_pc, app (from plt_type)
-	Country  string // from #country_code
-	Language string // from #system_language[:2]
-	OS       string // from #os (iOS, Android, etc.)
+	Platform string
+	Country  string
+	Language string
+	OS       string
 
 	// Monetization
 	Revenue        float64
 	Currency       string
-	PaymentChannel string // webshop, google, 3rd_party, apple
+	PaymentChannel string
 	VIPLevel       uint8
 
-	// Flexible storage
+	// Flexible properties (JSON)
 	Properties map[string]interface{}
 
 	// Metadata
 	ReceivedAt time.Time
 }
 
-// EventRepo handles event data operations
+// EventRepo handles event data operations.
 type EventRepo struct {
 	data *Data
 	log  *log.Helper

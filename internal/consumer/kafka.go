@@ -1,3 +1,4 @@
+// Package consumer provides data ingestion from external sources.
 package consumer
 
 import (
@@ -13,7 +14,7 @@ import (
 	"segmentation/internal/data"
 )
 
-// KafkaConsumer handles Kafka message consumption
+// KafkaConsumer handles real-time event consumption from Kafka.
 type KafkaConsumer struct {
 	client     sarama.ConsumerGroup
 	eventRepo  *data.EventRepo

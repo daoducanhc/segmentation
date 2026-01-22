@@ -1,3 +1,4 @@
+// Package configx provides configuration utilities and environment variable helpers.
 package configx
 
 import (
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
+// GetEnvOrString returns the environment variable value or the default.
 func GetEnvOrString(key string, defaultValue string) string {
 	if os.Getenv(key) != "" {
 		return os.Getenv(key)

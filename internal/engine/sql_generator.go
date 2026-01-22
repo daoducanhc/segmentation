@@ -1,3 +1,4 @@
+// Package engine provides the segment evaluation engine.
 package engine
 
 import (
@@ -8,12 +9,16 @@ import (
 	v1 "segmentation/api/segment/v1"
 )
 
-// SQLGenerator generates ClickHouse SQL queries from segment definitions
+// SQLGenerator generates ClickHouse SQL queries from segment definitions.
+// Uses optimized table selection based on query complexity:
+//   - user_activity_summary: Pre-computed flags (A7, A30, PU) - FASTEST
+//   - user_daily_activity: Custom date ranges - FAST
+//   - events: Complex property filters - SLOWER
 type SQLGenerator struct {
 	eventsTable   string
 	usersTable    string
 	activityTable string
-	summaryTable  string // Pre-computed rolling windows (7d, 30d, 90d)
+	summaryTable  string
 }
 
 // NewSQLGenerator creates a new SQL generator
@@ -182,21 +187,35 @@ func (g *SQLGenerator) generateConditionSQL(cond *v1.Condition) (string, error) 
 	value := g.conditionValueToSQL(cond.Value)
 
 	var result string
-	switch cond.Operator {
-	case v1.ComparisonOperator_COMPARISON_OPERATOR_IS_NULL:
-		result = fmt.Sprintf("%s IS NULL", field)
-	case v1.ComparisonOperator_COMPARISON_OPERATOR_IS_NOT_NULL:
-		result = fmt.Sprintf("%s IS NOT NULL", field)
-	case v1.ComparisonOperator_COMPARISON_OPERATOR_IN, v1.ComparisonOperator_COMPARISON_OPERATOR_NOT_IN:
-		result = fmt.Sprintf("%s %s (%s)", field, op, value)
-	case v1.ComparisonOperator_COMPARISON_OPERATOR_BETWEEN:
-		result = fmt.Sprintf("%s BETWEEN %s", field, value)
-	case v1.ComparisonOperator_COMPARISON_OPERATOR_CONTAINS:
-		result = fmt.Sprintf("%s LIKE '%%%s%%'", field, value)
-	case v1.ComparisonOperator_COMPARISON_OPERATOR_NOT_CONTAINS:
-		result = fmt.Sprintf("%s NOT LIKE '%%%s%%'", field, value)
-	default:
-		result = fmt.Sprintf("%s %s %s", field, op, value)
+
+	// Handle array fields (platform, country, language, os) stored as comma-separated strings
+	if isArrayField(field) {
+		// Extract raw string value for array operations
+		rawValue := ""
+		if cond.Value != nil {
+			if sv, ok := cond.Value.Value.(*v1.ConditionValue_StringValue); ok {
+				rawValue = sv.StringValue
+			}
+		}
+		result = generateArrayFieldCondition(field, cond.Operator, rawValue, cond.Value)
+	} else {
+		// Standard field handling
+		switch cond.Operator {
+		case v1.ComparisonOperator_COMPARISON_OPERATOR_IS_NULL:
+			result = fmt.Sprintf("%s IS NULL", field)
+		case v1.ComparisonOperator_COMPARISON_OPERATOR_IS_NOT_NULL:
+			result = fmt.Sprintf("%s IS NOT NULL", field)
+		case v1.ComparisonOperator_COMPARISON_OPERATOR_IN, v1.ComparisonOperator_COMPARISON_OPERATOR_NOT_IN:
+			result = fmt.Sprintf("%s %s (%s)", field, op, value)
+		case v1.ComparisonOperator_COMPARISON_OPERATOR_BETWEEN:
+			result = fmt.Sprintf("%s BETWEEN %s", field, value)
+		case v1.ComparisonOperator_COMPARISON_OPERATOR_CONTAINS:
+			result = fmt.Sprintf("%s LIKE '%%%s%%'", field, value)
+		case v1.ComparisonOperator_COMPARISON_OPERATOR_NOT_CONTAINS:
+			result = fmt.Sprintf("%s NOT LIKE '%%%s%%'", field, value)
+		default:
+			result = fmt.Sprintf("%s %s %s", field, op, value)
+		}
 	}
 
 	if cond.Negated {
@@ -624,6 +643,73 @@ func escapeSQLString(s string) string {
 	s = strings.ReplaceAll(s, "'", "''")
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	return s
+}
+
+// isArrayField returns true if the field stores comma-separated values
+func isArrayField(field string) bool {
+	arrayFields := map[string]bool{
+		"platform": true,
+		"country":  true,
+		"language": true,
+		"os":       true,
+	}
+	return arrayFields[field]
+}
+
+// generateArrayFieldCondition generates SQL for comma-separated array fields
+// Example: platform = 'web_mobile,app' and we want to check if 'web_mobile' is in it
+func generateArrayFieldCondition(field string, op v1.ComparisonOperator, value string, condValue *v1.ConditionValue) string {
+	// Convert comma-separated string to array and check membership
+	arrayExpr := fmt.Sprintf("splitByChar(',', %s)", field)
+
+	switch op {
+	case v1.ComparisonOperator_COMPARISON_OPERATOR_EQ:
+		// "has platform web_mobile" -> check if value is in the array
+		return fmt.Sprintf("has(%s, '%s')", arrayExpr, escapeSQLString(value))
+	case v1.ComparisonOperator_COMPARISON_OPERATOR_NEQ:
+		// "not has platform web_mobile"
+		return fmt.Sprintf("NOT has(%s, '%s')", arrayExpr, escapeSQLString(value))
+	case v1.ComparisonOperator_COMPARISON_OPERATOR_IN:
+		// "platform in ['web_mobile', 'app']" -> check if any value matches
+		values := extractStringList(condValue)
+		if len(values) > 0 {
+			quoted := make([]string, len(values))
+			for i, v := range values {
+				quoted[i] = fmt.Sprintf("'%s'", escapeSQLString(v))
+			}
+			return fmt.Sprintf("hasAny(%s, [%s])", arrayExpr, strings.Join(quoted, ", "))
+		}
+		return fmt.Sprintf("has(%s, '%s')", arrayExpr, escapeSQLString(value))
+	case v1.ComparisonOperator_COMPARISON_OPERATOR_NOT_IN:
+		values := extractStringList(condValue)
+		if len(values) > 0 {
+			quoted := make([]string, len(values))
+			for i, v := range values {
+				quoted[i] = fmt.Sprintf("'%s'", escapeSQLString(v))
+			}
+			return fmt.Sprintf("NOT hasAny(%s, [%s])", arrayExpr, strings.Join(quoted, ", "))
+		}
+		return fmt.Sprintf("NOT has(%s, '%s')", arrayExpr, escapeSQLString(value))
+	case v1.ComparisonOperator_COMPARISON_OPERATOR_CONTAINS:
+		// Substring match
+		return fmt.Sprintf("%s LIKE '%%%s%%'", field, escapeSQLString(value))
+	case v1.ComparisonOperator_COMPARISON_OPERATOR_NOT_CONTAINS:
+		return fmt.Sprintf("%s NOT LIKE '%%%s%%'", field, escapeSQLString(value))
+	default:
+		// Fallback to simple has check
+		return fmt.Sprintf("has(%s, '%s')", arrayExpr, escapeSQLString(value))
+	}
+}
+
+// extractStringList extracts string list from ConditionValue
+func extractStringList(val *v1.ConditionValue) []string {
+	if val == nil {
+		return nil
+	}
+	if sl, ok := val.Value.(*v1.ConditionValue_StringList); ok && sl.StringList != nil {
+		return sl.StringList.Values
+	}
+	return nil
 }
 
 // ValidateDefinition validates a segment definition

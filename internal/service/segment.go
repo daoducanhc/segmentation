@@ -1,3 +1,4 @@
+// Package service implements the business logic layer.
 package service
 
 import (
@@ -14,7 +15,7 @@ import (
 	"segmentation/pkg/fileparser"
 )
 
-// SegmentService implements the SegmentService gRPC service
+// SegmentService implements the SegmentService gRPC/HTTP service.
 type SegmentService struct {
 	v1.UnimplementedSegmentServiceServer
 

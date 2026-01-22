@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+segmentation
 
 # Test binary, built with `go test -c`
 *.test
@@ -24,9 +25,26 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
+# Environment files (contain secrets)
 .env
+.env.local
+.env.*.local
 
 # Editor/IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+
+# Debug binaries
+cmd/server/__debug_*
+__debug_*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

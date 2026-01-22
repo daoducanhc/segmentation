@@ -1,3 +1,4 @@
+// Package consumer provides data ingestion from external sources.
 package consumer
 
 import (
@@ -16,19 +17,19 @@ import (
 	"segmentation/internal/data"
 )
 
-// TDResponseData contains the headers from ThinkingData response
+// TDResponseData contains the column headers from ThinkingData response.
 type TDResponseData struct {
 	Headers []string `json:"headers"`
 }
 
-// TDResponseHeader represents ThinkingData query response header
+// TDResponseHeader represents a ThinkingData query response header.
 type TDResponseHeader struct {
 	Data          TDResponseData `json:"data"`
 	ReturnCode    int32          `json:"return_code"`
 	ReturnMessage string         `json:"return_message"`
 }
 
-// ThinkingDataSync handles syncing events from ThinkingData to ClickHouse
+// ThinkingDataSync handles periodic syncing of events from ThinkingData to ClickHouse.
 type ThinkingDataSync struct {
 	config          *conf.ThinkingData
 	eventRepo       *data.EventRepo
@@ -37,12 +38,12 @@ type ThinkingDataSync struct {
 	client          *req.Client
 
 	mu           sync.RWMutex
-	lastSyncTime map[string]time.Time // per event type
+	lastSyncTime map[string]time.Time
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
 }
 
-// NewThinkingDataSync creates a new ThinkingData sync consumer
+// NewThinkingDataSync creates a new ThinkingData sync consumer.
 func NewThinkingDataSync(config *conf.ThinkingData, eventRepo *data.EventRepo, aggregationRepo *data.AggregationRepo, logger log.Logger) *ThinkingDataSync {
 	timeout := time.Duration(config.TimeoutSeconds) * time.Second
 	if timeout == 0 {
@@ -88,7 +89,7 @@ func (t *ThinkingDataSync) syncLoop(ctx context.Context) {
 
 	interval := time.Duration(t.config.SyncIntervalHours) * time.Hour
 	if interval == 0 {
-		interval = 5 * time.Minute
+		interval = 24 * time.Hour
 	}
 
 	ticker := time.NewTicker(interval)
@@ -133,10 +134,14 @@ func (t *ThinkingDataSync) runSync(ctx context.Context) {
 		t.mu.Unlock()
 	}
 
-	// Refresh pre-aggregate tables after syncing events
+	// Trigger aggregation refresh after sync completes
 	if t.aggregationRepo != nil {
+		t.logger.Info("running full refresh after TD sync")
+		start := time.Now()
 		if err := t.aggregationRepo.RunAllRefreshJobs(ctx); err != nil {
-			t.logger.Errorf("failed to refresh aggregation tables: %v", err)
+			t.logger.Errorf("post-sync refresh failed: %v", err)
+		} else {
+			t.logger.Infof("post-sync refresh completed in %v", time.Since(start))
 		}
 	}
 }

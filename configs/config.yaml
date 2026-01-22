@@ -105,3 +105,13 @@ rfm:
   monetary:
     low_max: 100000       # < 100K VND = Low
     high_min: 2000000     # >= 2M VND = High
+
+# Aggregation Refresh Scheduler
+# Handles periodic refresh of pre-aggregate tables (user_daily_activity, users, etc.)
+# No OPTIMIZE TABLE needed - uses FINAL modifier for deduplication at query time
+# Note: Full refresh also runs automatically after ThinkingData sync completes
+scheduler:
+  enabled: true
+  incremental_refresh_minutes: 10   # How often to refresh recent data (default: 10 min)
+  incremental_days: 7               # Days to include in incremental refresh
+  full_refresh_hour: 3              # Hour (0-23) for daily full refresh (3 AM)
