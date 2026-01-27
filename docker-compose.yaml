@@ -1,22 +1,22 @@
 version: '3.8'
 
 services:
-  segmentation:
-    build: .
-    container_name: mgp-segmentation
-    ports:
-      - "8000:8000"
-      - "9001:9000"  # Changed to avoid conflict with ClickHouse native port
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    environment:
-      - TZ=UTC
-    volumes:
-      - ./configs:/app/configs
-    networks:
-      - mgp-local
-      - segmentation-internal
+  # segmentation:
+  #   build: .
+  #   container_name: mgp-segmentation
+  #   ports:
+  #     - "8000:8000"
+  #     - "9001:9000"  # Changed to avoid conflict with ClickHouse native port
+  #   depends_on:
+  #     clickhouse:
+  #       condition: service_healthy
+  #   environment:
+  #     - TZ=UTC
+  #   volumes:
+  #     - ./configs:/app/configs
+  #   networks:
+  #     - mgp-local
+  #     - segmentation-internal
 
   clickhouse:
     image: clickhouse/clickhouse-server:23.8

@@ -95,8 +95,11 @@ func (t *ThinkingDataSync) syncLoop(ctx context.Context) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	// Run immediately on start
-	t.runSync(ctx)
+	// Run immediately on start if configured
+	if t.config.SyncOnStartup {
+		t.logger.Info("running initial TD sync on startup")
+		t.runSync(ctx)
+	}
 
 	for {
 		select {

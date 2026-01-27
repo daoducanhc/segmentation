@@ -1,16 +1,15 @@
 # User Segmentation Engine
 
-A high-performance, event-based user segmentation engine built with Go, Kratos framework, and ClickHouse.
+High-performance user segmentation with Go, Kratos, and ClickHouse.
 
 ## Features
 
-- **Criteria Library**: Predefined criteria (A7, A30, PU, RFM, Platform, Country, Churned, etc.)
-- **Flexible Segments**: Combine criteria with AND/OR/NOT logic
-- **Real-time Ready**: Kafka integration for real-time event ingestion
-- **High Performance**: ClickHouse-powered analytics for ~2M users
-- **REST & gRPC APIs**: Dual-protocol support via Kratos
+- Predefined criteria (A7, A30, PU, RFM, Platform, Country, Churned)
+- AND/OR/NOT logic
+- Kafka integration
+- REST & gRPC APIs
 
-## Architecture
+## Quick Start
 
 ```
 ┌─────────────────┐     ┌─────────────────┐
@@ -160,50 +159,191 @@ toDate(event_time, 'Asia/Ho_Chi_Minh') AS activity_date
 
 ## API Examples
 
-### Create Segment
+Note: Enums accept both string names and numbers. Examples use string names for readability.
+
+### 1. Simple Segment: Active in Last 7 Days (A7)
 
 ```bash
-# A7 segment (active in last 7 days)
 curl -X POST http://localhost:8000/v1/segments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "A7 Users",
+    "description": "Users active in last 7 days",
     "definition": {
       "type": "SEGMENT_TYPE_DYNAMIC",
-      "event_conditions": [{
-        "lookback_days": 7,
-        "count_operator": "COMPARISON_OPERATOR_GTE",
-        "count_value": 1
-      }]
+      "userConditions": {
+        "operator": "LOGICAL_OPERATOR_AND",
+        "conditions": [
+          {
+            "field": "is_active_7d",
+            "operator": "COMPARISON_OPERATOR_EQ",
+            "value": {"stringValue": "1"}
+          }
+        ]
+      }
     }
   }'
 ```
 
-### Evaluate Segment
+### 2. Nested Groups: (A7 AND PU) OR A30
+
+Single segment with nested `groups`:
 
 ```bash
-curl -X POST http://localhost:8000/v1/segments/{id}/evaluate \
-  -d '{"limit": 1000}'
+curl -X POST http://localhost:8000/v1/segments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "(A7 AND PU) OR Revenue>500K",
+    "definition": {
+      "type": 2,
+      "userConditions": {
+        "operator": 2,
+        "groups": [
+          {"operator": 1, "conditions": [
+            {"field": "is_active_7d", "operator": 1, "value": {"boolValue": true}},
+            {
+              "field": "total_revenue",
+              "operator": 5,
+              "value": {"doubleValue": 500000}
+            }
+          ]},
+          {"operator": 1, "conditions": [
+            {
+              "field": "total_revenue",
+              "operator": 4,
+              "value": {"doubleValue": 500000}
+            }
+          ]}
+        ]
+      }
+    }
+  }'
 ```
 
-### Preview Segment
+### 3. Event-Based Segment: Recent High-Value Buyers
+
+**Business Logic**: Users who made 3+ purchases in last 30 days with total revenue > 500K VND
+
+```bash
+curl -X POST http://localhost:8000/v1/segments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Recent High-Value Buyers",
+    "description": "3+ purchases in 30d, revenue > 500K",
+    "definition": {
+      "type": 2,
+      "eventConditions": [
+        {
+          "eventName": "pay",
+          "lookbackDays": 30,
+          "countOperator": 4,
+          "countValue": 3
+        }
+      ],
+      "userConditions": {
+        "operator": 1,
+        "conditions": [
+          {
+            "field": "total_revenue",
+            "operator": 4,
+            "value": {"doubleValue": 500000}
+          }
+        ]
+      },
+      "overallLogic": 1
+    }
+  }'
+```
+
+### 4. Preview Segment (Test Before Saving)
 
 ```bash
 curl -X POST http://localhost:8000/v1/segments/preview \
-  -d '{"definition": {...}, "limit": 100}'
+  -H "Content-Type: application/json" \
+  -d '{
+    "definition": {
+      "type": 2,
+      "userConditions": {
+        "operator": 1,
+        "conditions": [
+          {
+            "field": "country",
+            "operator": 7,
+            "value": {"stringList": {"values": ["ID", "US"]}}
+          },
+          {
+            "field": "platform",
+            "operator": 1,
+            "value": {"stringValue": "web_mobile"}
+          }
+        ]
+      }
+    },
+    "limit": 100
+  }'
+```
+
+**Response:**
+```json
+{
+  "user_ids": ["user_123", "user_456", ...],
+  "total_count": 12450,
+  "generated_sql": "SELECT user_id FROM..."
+}
+```
+
+### 5. Evaluate Existing Segment
+
+```bash
+# Replace {id} with actual segment ID from create response
+curl -X POST http://localhost:8000/v1/segments/3358b290-d851-4083-9ced-54996cacb1b4/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "limit": 1000,
+    "offset": 0
+  }'
+```
+
+**Response:**
+```json
+{
+  "user_ids": ["user_1", "user_2", ...],
+  "total_count": 45230,
+  "evaluated_at": "2026-01-26T14:25:30Z",
+  "generated_sql": "SELECT DISTINCT user_id FROM..."
+}
 ```
 
 ## Segment Criteria Reference
 
+### Predefined Lookback Windows: 1, 3, 7, 30, 90 days
+
+| Field | Description | Table |
+|-------|-------------|-------|
+| **is_active_1d** | Active in last 1 day | user_activity_summary |
+| **is_active_3d** | Active in last 3 days | user_activity_summary |
+| **is_active_7d** | Active in last 7 days | user_activity_summary |
+| **is_active_30d** | Active in last 30 days | user_activity_summary |
+| **is_active_90d** | Active in last 90 days | user_activity_summary |
+| **is_pu_1d** | Made purchase in last 1 day | user_activity_summary |
+| **is_pu_3d** | Made purchase in last 3 days | user_activity_summary |
+| **is_pu_7d** | Made purchase in last 7 days | user_activity_summary |
+| **is_pu_30d** | Made purchase in last 30 days | user_activity_summary |
+| **is_pu_90d** | Made purchase in last 90 days | user_activity_summary |
+| **is_churned_1d** | No activity in 1+ days | user_activity_summary |
+| **is_churned_3d** | No activity in 3+ days | user_activity_summary |
+| **is_churned_7d** | No activity in 7+ days | user_activity_summary |
+| **is_churned_30d** | No activity in 30+ days | user_activity_summary |
+| **is_churned_90d** | No activity in 90+ days | user_activity_summary |
+
+### Other Criteria
+
 | Criterion | Description | Performance |
 |-----------|-------------|-------------|
-| **A7, A30, A90** | Active in last N days | Sub-second |
-| **PU7, PU30, PU90** | Paying user in last N days | Sub-second |
-| **CHURNED_N** | No activity in N+ days | Sub-second |
-| **Custom Activity** | Activity in custom window | 1-2 seconds |
-| **PLATFORM** | User platform (app, web_mobile, web_pc) | Fast |
-| **COUNTRY** | User country code | Fast |
-| **RFM** | Recency/Frequency/Monetary buckets | Fast |
+| **total_revenue** | User's total revenue | Fast (users table) |
+| **platform** | User platform (app, web_mobile, web_pc) | Fast |
+| **country** | User country code | Fast |
+| **Custom Activity** | Activity in custom window (eventConditions) | 1-2 seconds |
 | **Event Properties** | Custom event filters | 5-10 seconds |
 
 ## Profile Array Fields

@@ -82,6 +82,7 @@ func (r *AggregationRepo) RefreshDailyActivityDays(ctx context.Context, days int
 }
 
 // RefreshUserActivitySummary computes predefined activity/PU/churn flags
+// Predefined lookback windows: 1, 3, 7, 30, 90 days
 // This should be run periodically (e.g., every 5-15 minutes for near real-time)
 // Uses FINAL to read deduplicated data from user_daily_activity
 func (r *AggregationRepo) RefreshUserActivitySummary(ctx context.Context) error {
@@ -93,21 +94,27 @@ func (r *AggregationRepo) RefreshUserActivitySummary(ctx context.Context) error 
 	query := `
 		INSERT INTO segmentation.user_activity_summary
 		(user_id, 
-		 is_active_7d, is_active_30d, is_active_90d,
-		 is_pu_7d, is_pu_30d, is_pu_90d,
-		 is_churned_7d, is_churned_30d, is_churned_90d,
+		 is_active_1d, is_active_3d, is_active_7d, is_active_30d, is_active_90d,
+		 is_pu_1d, is_pu_3d, is_pu_7d, is_pu_30d, is_pu_90d,
+		 is_churned_1d, is_churned_3d, is_churned_7d, is_churned_30d, is_churned_90d,
 		 computed_at)
 		SELECT
 			user_id,
-			-- Activity flags (had any activity in window)
+			-- Activity flags (had any activity in window): 1, 3, 7, 30, 90 days
+			toUInt8(countIf(activity_date >= today() - 1) > 0) AS is_active_1d,
+			toUInt8(countIf(activity_date >= today() - 3) > 0) AS is_active_3d,
 			toUInt8(countIf(activity_date >= today() - 7) > 0) AS is_active_7d,
 			toUInt8(countIf(activity_date >= today() - 30) > 0) AS is_active_30d,
 			toUInt8(countIf(activity_date >= today() - 90) > 0) AS is_active_90d,
-			-- Paying user flags (made purchase in window)
+			-- Paying user flags (made purchase in window): 1, 3, 7, 30, 90 days
+			toUInt8(sumIf(purchase_count, activity_date >= today() - 1) > 0) AS is_pu_1d,
+			toUInt8(sumIf(purchase_count, activity_date >= today() - 3) > 0) AS is_pu_3d,
 			toUInt8(sumIf(purchase_count, activity_date >= today() - 7) > 0) AS is_pu_7d,
 			toUInt8(sumIf(purchase_count, activity_date >= today() - 30) > 0) AS is_pu_30d,
 			toUInt8(sumIf(purchase_count, activity_date >= today() - 90) > 0) AS is_pu_90d,
-			-- Churn flags (no activity in N+ days)
+			-- Churn flags (no activity in N+ days): 1, 3, 7, 30, 90 days
+			toUInt8(dateDiff('day', max(activity_date), today()) >= 1) AS is_churned_1d,
+			toUInt8(dateDiff('day', max(activity_date), today()) >= 3) AS is_churned_3d,
 			toUInt8(dateDiff('day', max(activity_date), today()) >= 7) AS is_churned_7d,
 			toUInt8(dateDiff('day', max(activity_date), today()) >= 30) AS is_churned_30d,
 			toUInt8(dateDiff('day', max(activity_date), today()) >= 90) AS is_churned_90d,

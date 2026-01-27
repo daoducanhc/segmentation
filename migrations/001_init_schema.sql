@@ -159,22 +159,29 @@ ORDER BY (app_id, user_id, activity_date);
 -- =============================================================================
 -- MATERIALIZED VIEW: User Activity Summary (Rolling Windows)
 -- =============================================================================
--- For quick A7/A30/churn lookups
+-- For quick A1/A3/A7/A30/A90 and churn lookups
+-- Predefined lookback windows: 1, 3, 7, 30, 90 days
 CREATE TABLE IF NOT EXISTS segmentation.user_activity_summary
 (
     user_id String,
     
-    -- Activity flags (predefined lookback windows)
+    -- Activity flags (predefined lookback windows: 1, 3, 7, 30, 90)
+    is_active_1d UInt8,     -- A1: had activity in last 1 day
+    is_active_3d UInt8,     -- A3: had activity in last 3 days
     is_active_7d UInt8,     -- A7: had activity in last 7 days
     is_active_30d UInt8,    -- A30: had activity in last 30 days
     is_active_90d UInt8,    -- A90: had activity in last 90 days
     
-    -- Paying user flags (predefined lookback windows)
+    -- Paying user flags (predefined lookback windows: 1, 3, 7, 30, 90)
+    is_pu_1d UInt8,         -- PU1: made purchase in last 1 day
+    is_pu_3d UInt8,         -- PU3: made purchase in last 3 days
     is_pu_7d UInt8,         -- PU7: made purchase in last 7 days
     is_pu_30d UInt8,        -- PU30: made purchase in last 30 days
     is_pu_90d UInt8,        -- PU90: made purchase in last 90 days
     
-    -- Churn flags (predefined inactivity windows)
+    -- Churn flags (predefined inactivity windows: 1, 3, 7, 30, 90)
+    is_churned_1d UInt8,    -- No activity in 1+ days
+    is_churned_3d UInt8,    -- No activity in 3+ days
     is_churned_7d UInt8,    -- No activity in 7+ days
     is_churned_30d UInt8,   -- No activity in 30+ days
     is_churned_90d UInt8,   -- No activity in 90+ days

@@ -68,6 +68,11 @@ func main() {
 		bc.ThinkingData.Global.QueryURL = configx.GetEnvOrString("THINKINGDATA_GLOBAL_QUERY_URL", "")
 		bc.ThinkingData.Global.QueryToken = configx.GetEnvOrString("THINKINGDATA_GLOBAL_QUERY_TOKEN", "")
 
+		// Override sync_on_startup from environment variable if set
+		if syncOnStartup := configx.GetEnvOrString("SYNC_ON_STARTUP", ""); syncOnStartup != "" {
+			bc.ThinkingData.SyncOnStartup = syncOnStartup == "true"
+		}
+
 		log.NewHelper(logger).Infof("TD VN: url=%s, token_len=%d", bc.ThinkingData.VN.QueryURL, len(bc.ThinkingData.VN.QueryToken))
 	}
 

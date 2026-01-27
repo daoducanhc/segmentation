@@ -98,6 +98,7 @@ type ThinkingData struct {
 	BatchSize         int32          `yaml:"batch_size" json:"batch_size"`
 	LookbackDays      int32          `yaml:"lookback_days" json:"lookback_days"`
 	TimeoutSeconds    int32          `yaml:"timeout_seconds" json:"timeout_seconds"`
+	SyncOnStartup     bool           `yaml:"sync_on_startup" json:"sync_on_startup"` // Run sync immediately when server starts (default: true)
 	Events            []*TDEventSync `yaml:"events" json:"events"`
 }
 

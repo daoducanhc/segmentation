@@ -117,13 +117,134 @@ func (g *SQLGenerator) generateCompositeSQL(def *v1.SegmentDefinition) (string, 
 }
 
 // generateUserConditionsSQL generates SQL for user conditions
+// Handles mixed fields from different tables (summary vs users) by:
+// - Using summary table if it has all needed fields
+// - Using users table if it has all needed fields
+// - Using subqueries/joins for mixed fields
 func (g *SQLGenerator) generateUserConditionsSQL(group *v1.ConditionGroup) (string, error) {
+	// Analyze which tables are needed
+	hasSummaryFields := g.needsSummaryTable(group)
+	hasUserFields := g.needsUserTable(group)
+
+	// If only one table is needed, use it directly
+	if hasSummaryFields && !hasUserFields {
+		whereClause, err := g.generateConditionGroupSQL(group)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("SELECT DISTINCT user_id FROM %s FINAL WHERE %s", g.summaryTable, whereClause), nil
+	}
+
+	if !hasSummaryFields && hasUserFields {
+		whereClause, err := g.generateConditionGroupSQL(group)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("SELECT DISTINCT user_id FROM %s FINAL WHERE %s", g.usersTable, whereClause), nil
+	}
+
+	// Mixed fields - need to split conditions and join
+	return g.generateMixedTableSQL(group)
+}
+
+// generateMixedTableSQL handles conditions that span both summary and users tables
+func (g *SQLGenerator) generateMixedTableSQL(group *v1.ConditionGroup) (string, error) {
+	// For OR operations at the top level, we can UNION the parts
+	if group.Operator == v1.LogicalOperator_LOGICAL_OPERATOR_OR && len(group.Groups) > 0 {
+		var parts []string
+		for _, subGroup := range group.Groups {
+			subSQL, err := g.generateUserConditionsSQL(subGroup)
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, "("+subSQL+")")
+		}
+		return fmt.Sprintf("SELECT DISTINCT user_id FROM (%s)", strings.Join(parts, " UNION ALL ")), nil
+	}
+
+	// For AND operations or single-level conditions, use subqueries
 	whereClause, err := g.generateConditionGroupSQL(group)
 	if err != nil {
 		return "", err
 	}
 
-	return fmt.Sprintf("SELECT DISTINCT user_id FROM %s FINAL WHERE %s", g.usersTable, whereClause), nil
+	// Use users table as base and join with summary table
+	return fmt.Sprintf(`SELECT DISTINCT u.user_id 
+FROM %s u FINAL
+LEFT JOIN %s s FINAL ON u.user_id = s.user_id
+WHERE %s`, g.usersTable, g.summaryTable, whereClause), nil
+}
+
+// needsUserTable checks if condition group uses users table fields
+func (g *SQLGenerator) needsUserTable(group *v1.ConditionGroup) bool {
+	if group == nil {
+		return false
+	}
+
+	// Check direct conditions
+	for _, cond := range group.Conditions {
+		if !isSummaryField(cond.Field) {
+			return true
+		}
+	}
+
+	// Check nested groups
+	for _, subGroup := range group.Groups {
+		if g.needsUserTable(subGroup) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// needsSummaryTable checks if condition group uses summary table fields
+func (g *SQLGenerator) needsSummaryTable(group *v1.ConditionGroup) bool {
+	if group == nil {
+		return false
+	}
+
+	// Check direct conditions
+	for _, cond := range group.Conditions {
+		if isSummaryField(cond.Field) {
+			return true
+		}
+	}
+
+	// Check nested groups
+	for _, subGroup := range group.Groups {
+		if g.needsSummaryTable(subGroup) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isSummaryField checks if field belongs to user_activity_summary table
+// Predefined lookback windows: 1, 3, 7, 30, 90 days
+func isSummaryField(field string) bool {
+	summaryFields := map[string]bool{
+		// Activity flags: 1, 3, 7, 30, 90 days
+		"is_active_1d":  true,
+		"is_active_3d":  true,
+		"is_active_7d":  true,
+		"is_active_30d": true,
+		"is_active_90d": true,
+		// Paying user flags: 1, 3, 7, 30, 90 days
+		"is_pu_1d":  true,
+		"is_pu_3d":  true,
+		"is_pu_7d":  true,
+		"is_pu_30d": true,
+		"is_pu_90d": true,
+		// Churn flags: 1, 3, 7, 30, 90 days
+		"is_churned_1d":  true,
+		"is_churned_3d":  true,
+		"is_churned_7d":  true,
+		"is_churned_30d": true,
+		"is_churned_90d": true,
+	}
+	return summaryFields[field]
 }
 
 // generateConditionGroupSQL generates SQL WHERE clause for a condition group
@@ -228,19 +349,26 @@ func (g *SQLGenerator) generateConditionSQL(cond *v1.Condition) (string, error) 
 // generateEventConditionSQL generates SQL for an event condition
 // Uses user_daily_activity for simple activity queries (faster)
 // Falls back to events table for complex property filters
+// IMPORTANT: eventName is REQUIRED. Use "*" for any event.
 func (g *SQLGenerator) generateEventConditionSQL(eventCond *v1.EventCondition) (string, error) {
 	if eventCond == nil {
 		return "", nil
 	}
 
+	// Event name is REQUIRED
+	if eventCond.EventName == "" {
+		return "", fmt.Errorf("eventName is required. Use '*' for any event, 'app_page_view' for activity, 'pay' for purchases")
+	}
+
 	// Check if we can use the optimized daily activity table
-	// Use daily activity for: any event (*), login, pay - without complex property filters
+	// Use daily activity for: any event (*), app_page_view, pay - without complex property filters
 	hasPropertyFilter := eventCond.PropertyFilter != nil &&
 		(len(eventCond.PropertyFilter.Conditions) > 0 || len(eventCond.PropertyFilter.Groups) > 0)
 
 	canUseDailyTable := !hasPropertyFilter &&
-		(eventCond.EventName == "*" || eventCond.EventName == "" ||
-			eventCond.EventName == "login" || eventCond.EventName == "pay")
+		(eventCond.EventName == "*" ||
+			eventCond.EventName == "app_page_view" || eventCond.EventName == "pay" ||
+			eventCond.EventName == "churned")
 
 	if canUseDailyTable {
 		return g.generateActivityConditionSQL(eventCond)
@@ -264,9 +392,12 @@ func (g *SQLGenerator) generateActivityConditionSQL(eventCond *v1.EventCondition
 }
 
 // canUseSummaryTable checks if we can use the pre-computed summary table
+// Predefined lookback windows: 1, 3, 7, 30, 90 days
 func (g *SQLGenerator) canUseSummaryTable(eventCond *v1.EventCondition) bool {
-	// Only predefined windows (7, 30, 90 days) have pre-computed flags
-	isPredefinedWindow := eventCond.LookbackDays == 7 ||
+	// Only predefined windows (1, 3, 7, 30, 90 days) have pre-computed flags
+	isPredefinedWindow := eventCond.LookbackDays == 1 ||
+		eventCond.LookbackDays == 3 ||
+		eventCond.LookbackDays == 7 ||
 		eventCond.LookbackDays == 30 ||
 		eventCond.LookbackDays == 90
 
@@ -291,7 +422,8 @@ func (g *SQLGenerator) canUseSummaryTable(eventCond *v1.EventCondition) bool {
 }
 
 // generateSummaryConditionSQL uses pre-computed user_activity_summary (FAST)
-// Supports: Activity (A7/A30/A90), Paying User (PU7/PU30/PU90), Churned
+// Supports predefined windows: 1, 3, 7, 30, 90 days
+// Event types: "*" or "app_page_view" (activity), "pay" (PU), "churned"
 func (g *SQLGenerator) generateSummaryConditionSQL(eventCond *v1.EventCondition) (string, error) {
 	var condition string
 
@@ -299,6 +431,10 @@ func (g *SQLGenerator) generateSummaryConditionSQL(eventCond *v1.EventCondition)
 	case "pay":
 		// Paying user criteria
 		switch eventCond.LookbackDays {
+		case 1:
+			condition = "is_pu_1d = 1"
+		case 3:
+			condition = "is_pu_3d = 1"
 		case 7:
 			condition = "is_pu_7d = 1"
 		case 30:
@@ -306,11 +442,15 @@ func (g *SQLGenerator) generateSummaryConditionSQL(eventCond *v1.EventCondition)
 		case 90:
 			condition = "is_pu_90d = 1"
 		default:
-			return "", fmt.Errorf("unsupported lookback days for PU: %d", eventCond.LookbackDays)
+			return "", fmt.Errorf("unsupported lookback days for PU: %d (allowed: 1, 3, 7, 30, 90)", eventCond.LookbackDays)
 		}
 	case "churned":
 		// Churned criteria (no activity in N+ days)
 		switch eventCond.LookbackDays {
+		case 1:
+			condition = "is_churned_1d = 1"
+		case 3:
+			condition = "is_churned_3d = 1"
 		case 7:
 			condition = "is_churned_7d = 1"
 		case 30:
@@ -318,11 +458,15 @@ func (g *SQLGenerator) generateSummaryConditionSQL(eventCond *v1.EventCondition)
 		case 90:
 			condition = "is_churned_90d = 1"
 		default:
-			return "", fmt.Errorf("unsupported lookback days for churned: %d", eventCond.LookbackDays)
+			return "", fmt.Errorf("unsupported lookback days for churned: %d (allowed: 1, 3, 7, 30, 90)", eventCond.LookbackDays)
 		}
-	default:
-		// Activity criteria (app_page_view or any event)
+	case "*", "app_page_view":
+		// Activity criteria (any event or app_page_view)
 		switch eventCond.LookbackDays {
+		case 1:
+			condition = "is_active_1d = 1"
+		case 3:
+			condition = "is_active_3d = 1"
 		case 7:
 			condition = "is_active_7d = 1"
 		case 30:
@@ -330,8 +474,10 @@ func (g *SQLGenerator) generateSummaryConditionSQL(eventCond *v1.EventCondition)
 		case 90:
 			condition = "is_active_90d = 1"
 		default:
-			return "", fmt.Errorf("unsupported lookback days for activity: %d", eventCond.LookbackDays)
+			return "", fmt.Errorf("unsupported lookback days for activity: %d (allowed: 1, 3, 7, 30, 90)", eventCond.LookbackDays)
 		}
+	default:
+		return "", fmt.Errorf("unsupported event name for summary table: %s (allowed: '*', 'app_page_view', 'pay', 'churned')", eventCond.EventName)
 	}
 
 	// Use FINAL to get deduplicated results from ReplacingMergeTree
@@ -342,6 +488,7 @@ func (g *SQLGenerator) generateSummaryConditionSQL(eventCond *v1.EventCondition)
 }
 
 // generateDailyActivityConditionSQL uses user_daily_activity for custom lookback
+// Event name is REQUIRED: "*" (any event), "app_page_view", "pay"
 func (g *SQLGenerator) generateDailyActivityConditionSQL(eventCond *v1.EventCondition) (string, error) {
 	var whereParts []string
 
@@ -369,9 +516,11 @@ func (g *SQLGenerator) generateDailyActivityConditionSQL(eventCond *v1.EventCond
 	case "pay":
 		// Use purchase_count from daily activity
 		havingClause = fmt.Sprintf("sum(purchase_count) %s %d", op, eventCond.CountValue)
-	default:
-		// For any event (*) or empty, use event_count
+	case "*":
+		// Any event - use total event_count
 		havingClause = fmt.Sprintf("sum(event_count) %s %d", op, eventCond.CountValue)
+	default:
+		return "", fmt.Errorf("unsupported event name for daily activity: %s (allowed: '*', 'app_page_view', 'pay')", eventCond.EventName)
 	}
 
 	return fmt.Sprintf(`

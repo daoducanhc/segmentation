@@ -45,6 +45,7 @@ thinkingdata:
   batch_size: 10000
   lookback_days: 365
   timeout_seconds: 120
+  sync_on_startup: true             # Run TD sync immediately when server starts
   
   # Event types to sync for Phase 1 criteria
   events:

@@ -3,12 +3,12 @@ package data
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	v1 "segmentation/api/segment/v1"
 )
@@ -49,7 +49,7 @@ func (r *SegmentRepo) Create(ctx context.Context, seg *Segment) error {
 		seg.ID = uuid.New().String()
 	}
 
-	defJSON, err := json.Marshal(seg.Definition)
+	defJSON, err := protojson.Marshal(seg.Definition)
 	if err != nil {
 		return fmt.Errorf("failed to marshal definition: %w", err)
 	}
@@ -93,7 +93,7 @@ func (r *SegmentRepo) Create(ctx context.Context, seg *Segment) error {
 
 // Update updates an existing segment
 func (r *SegmentRepo) Update(ctx context.Context, seg *Segment) error {
-	defJSON, err := json.Marshal(seg.Definition)
+	defJSON, err := protojson.Marshal(seg.Definition)
 	if err != nil {
 		return fmt.Errorf("failed to marshal definition: %w", err)
 	}
@@ -175,7 +175,7 @@ func (r *SegmentRepo) GetByID(ctx context.Context, id string) (*Segment, error) 
 
 	if defJSON != "" {
 		seg.Definition = &v1.SegmentDefinition{}
-		if err := json.Unmarshal([]byte(defJSON), seg.Definition); err != nil {
+		if err := protojson.Unmarshal([]byte(defJSON), seg.Definition); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal definition: %w", err)
 		}
 	}
@@ -257,7 +257,7 @@ func (r *SegmentRepo) List(ctx context.Context, page, pageSize int32, nameFilter
 
 		if defJSON != "" {
 			seg.Definition = &v1.SegmentDefinition{}
-			if err := json.Unmarshal([]byte(defJSON), seg.Definition); err != nil {
+			if err := protojson.Unmarshal([]byte(defJSON), seg.Definition); err != nil {
 				r.log.Warnf("failed to unmarshal definition for segment %s: %v", seg.ID, err)
 			}
 		}
