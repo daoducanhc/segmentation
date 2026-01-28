@@ -12,6 +12,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-kratos/swagger-api/openapiv2"
+	"github.com/gorilla/handlers"
 
 	v1 "segmentation/api/segment/v1"
 	"segmentation/internal/conf"
@@ -25,6 +26,11 @@ func NewHTTPServer(c *conf.Server, segmentSvc *service.SegmentService, logger lo
 			recovery.Recovery(),
 			logging.Server(logger),
 		),
+		kratoshttp.Filter(handlers.CORS(
+			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
+			handlers.AllowedHeaders([]string{"Accept", "Api-Version", "Authorization", "Ocp-Apim-Subscription-Key", "Referer", "User-Agent", "Content-Type", "X-Platform", "X-App-Id", "X-TimeZone", "X-Timezone", "X-Locale"}),
+			handlers.AllowedOrigins([]string{"*"}),
+		)),
 	}
 
 	if c.HTTP.Network != "" {

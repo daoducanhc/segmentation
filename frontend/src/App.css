@@ -1,0 +1,116 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
+
+.app { min-height: 100vh; }
+
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem 2rem; background: #1e293b; border-bottom: 1px solid #334155;
+}
+header h1 { font-size: 1.5rem; color: #f8fafc; }
+header nav { display: flex; gap: 0.5rem; }
+header nav button {
+  padding: 0.5rem 1rem; background: transparent; border: 1px solid #475569;
+  color: #94a3b8; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+}
+header nav button:hover, header nav button.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+
+.content { display: flex; height: calc(100vh - 65px); }
+
+.criteria-panel {
+  width: 280px; padding: 1rem; background: #1e293b; overflow-y: auto;
+  border-right: 1px solid #334155;
+}
+.criteria-panel h3 { margin-bottom: 1rem; color: #94a3b8; font-size: 0.875rem; text-transform: uppercase; }
+.category { margin-bottom: 1.5rem; }
+.category h4 { font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: 600; }
+.criteria-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.criteria-box {
+  padding: 0.5rem 0.75rem; background: #334155; border: 2px solid; border-radius: 6px;
+  font-size: 0.8rem; cursor: grab; user-select: none; transition: all 0.2s;
+}
+.criteria-box:hover { background: #475569; transform: translateY(-1px); }
+
+main { flex: 1; padding: 1.5rem; overflow-y: auto; }
+
+.builder-header { display: flex; gap: 1rem; margin-bottom: 1rem; }
+.builder-header input, .builder-header select {
+  padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155;
+  color: #e2e8f0; border-radius: 6px; font-size: 1rem;
+}
+.builder-header input { flex: 1; }
+.builder-header select { width: 120px; }
+
+.builder-area {
+  min-height: 300px; padding: 1.5rem; background: #1e293b; border: 2px dashed #334155;
+  border-radius: 8px; transition: all 0.2s;
+}
+.builder-area.drag-over { border-color: #3b82f6; background: #1e3a5f; }
+.builder-area .placeholder { color: #64748b; text-align: center; padding: 4rem; }
+
+.selected-criteria {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem;
+  background: #334155; border-radius: 6px; margin-bottom: 0.5rem;
+}
+.selected-criteria .logic-badge {
+  padding: 0.25rem 0.5rem; background: #475569; border-radius: 4px;
+  font-size: 0.7rem; font-weight: 600; color: #94a3b8;
+}
+.selected-criteria .field {
+  padding: 0.5rem 0.75rem; background: #1e293b; border: 2px solid;
+  border-radius: 4px; font-weight: 500;
+}
+.selected-criteria select, .selected-criteria input {
+  padding: 0.5rem; background: #1e293b; border: 1px solid #475569;
+  color: #e2e8f0; border-radius: 4px; font-size: 0.875rem;
+}
+.selected-criteria input { width: 150px; }
+.selected-criteria .remove {
+  padding: 0.25rem; background: transparent; border: none; color: #ef4444;
+  cursor: pointer; margin-left: auto;
+}
+
+.actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+.actions button {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem;
+  border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; transition: all 0.2s;
+}
+.actions button:first-child { background: #475569; color: white; }
+.actions button:last-child { background: #3b82f6; color: white; }
+.actions button:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.actions button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.result {
+  margin-top: 1.5rem; padding: 1rem; background: #1e293b; border-radius: 6px;
+  border: 1px solid #334155;
+}
+.result h4 { margin-bottom: 0.5rem; color: #94a3b8; font-size: 0.875rem; }
+.result pre {
+  background: #0f172a; padding: 1rem; border-radius: 4px; overflow-x: auto;
+  font-size: 0.8rem; color: #22c55e; max-height: 400px;
+}
+
+.segment-list, .upload-panel { padding: 2rem; max-width: 1000px; margin: 0 auto; }
+.segment-list h3, .upload-panel h3 { margin-bottom: 1.5rem; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #334155; }
+th { background: #1e293b; color: #94a3b8; font-size: 0.875rem; }
+td button {
+  padding: 0.5rem; background: #334155; border: none; color: #e2e8f0;
+  border-radius: 4px; cursor: pointer; margin-right: 0.5rem;
+}
+td button:hover { background: #475569; }
+
+.upload-panel input, .upload-panel button {
+  display: block; width: 100%; max-width: 400px; margin-bottom: 1rem;
+  padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155;
+  color: #e2e8f0; border-radius: 6px; font-size: 1rem;
+}
+.upload-panel button {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  background: #3b82f6; border: none; cursor: pointer;
+}
+.upload-panel button:hover { filter: brightness(1.1); }

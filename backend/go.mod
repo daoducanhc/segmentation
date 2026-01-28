@@ -8,6 +8,7 @@ require (
 	github.com/go-kratos/kratos/v2 v2.7.2
 	github.com/go-kratos/swagger-api v1.0.1
 	github.com/google/uuid v1.5.0
+	github.com/gorilla/handlers v1.5.2
 	github.com/imroc/req/v3 v3.42.3
 	github.com/spf13/cast v1.6.0
 	github.com/xuri/excelize/v2 v2.8.1
@@ -24,6 +25,7 @@ require (
 	github.com/eapache/go-resiliency v1.4.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
+	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
