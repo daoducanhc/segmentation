@@ -8,7 +8,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Segments
+// Segments CRUD
 export const createSegment = (segment: Segment) =>
   api.post('/segments', segment).then(r => r.data);
 
@@ -17,6 +17,9 @@ export const listSegments = (page = 1, pageSize = 20) =>
 
 export const getSegment = (id: string) =>
   api.get(`/segments/${id}`).then(r => r.data);
+
+export const updateSegment = (id: string, segment: Partial<Segment>) =>
+  api.put(`/segments/${id}`, segment).then(r => r.data);
 
 export const deleteSegment = (id: string) =>
   api.delete(`/segments/${id}`).then(r => r.data);

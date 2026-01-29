@@ -165,13 +165,35 @@ func (s *SegmentService) ListSegments(ctx context.Context, req *v1.ListSegmentsR
 	}, nil
 }
 
-// EvaluateSegment evaluates a segment and returns matching user IDs
+// EvaluateSegment evaluates a segment and return	s matching user IDs
 func (s *SegmentService) EvaluateSegment(ctx context.Context, req *v1.EvaluateSegmentRequest) (*v1.EvaluateSegmentResponse, error) {
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 1000
 	}
 
+	// Get segment to check type
+	segment, err := s.segmentRepo.GetByID(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	// For STATIC segments, fetch from cached results (DB)
+	if segment.Definition.Type == v1.SegmentType_SEGMENT_TYPE_STATIC {
+		userIDs, total, err := s.segmentRepo.GetCachedResults(ctx, req.Id, limit, req.Offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cached results: %w", err)
+		}
+
+		return &v1.EvaluateSegmentResponse{
+			UserIds:      userIDs,
+			TotalCount:   total,
+			EvaluatedAt:  timestamppb.Now(),
+			GeneratedSql: "",
+		}, nil
+	}
+
+	// For DYNAMIC and COMPOSITE segments, run evaluation query
 	result, err := s.evaluator.EvaluateWithPagination(ctx, req.Id, limit, req.Offset)
 	if err != nil {
 		return nil, err

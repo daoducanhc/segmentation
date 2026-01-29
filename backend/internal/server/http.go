@@ -27,7 +27,7 @@ func NewHTTPServer(c *conf.Server, segmentSvc *service.SegmentService, logger lo
 			logging.Server(logger),
 		),
 		kratoshttp.Filter(handlers.CORS(
-			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
+			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"}),
 			handlers.AllowedHeaders([]string{"Accept", "Api-Version", "Authorization", "Ocp-Apim-Subscription-Key", "Referer", "User-Agent", "Content-Type", "X-Platform", "X-App-Id", "X-TimeZone", "X-Timezone", "X-Locale"}),
 			handlers.AllowedOrigins([]string{"*"}),
 		)),

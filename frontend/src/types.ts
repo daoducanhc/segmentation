@@ -25,11 +25,18 @@ export interface ConditionGroup {
   groups?: ConditionGroup[];
 }
 
+export interface ChildSegmentRef {
+  segmentId: string;
+  negated?: boolean;
+}
+
 export interface SegmentDefinition {
   type: number;
   userConditions?: ConditionGroup;
   eventConditions?: EventCondition[];
   overallLogic?: number;
+  childSegments?: ChildSegmentRef[];
+  childLogic?: number;
 }
 
 export interface EventCondition {

@@ -114,12 +114,33 @@ func (e *Evaluator) EvaluateWithPagination(ctx context.Context, segmentID string
 	if err != nil {
 		result.Error = err
 		result.ExecutionMs = time.Since(startTime).Milliseconds()
+		e.recordEvaluation(ctx, segmentID, result, "error", err.Error())
 		return result, err
 	}
 
 	result.UserIDs = userIDs
 	result.TotalCount = total
 	result.ExecutionMs = time.Since(startTime).Milliseconds()
+
+	// For the first page (offset = 0), cache all results and update metadata
+	if offset == 0 {
+		// Get all results for caching (no pagination)
+		allUserIDs, _, err := e.segmentRepo.ExecuteSegmentQuery(ctx, sql, 0, 0)
+		if err == nil {
+			// Cache results
+			if err := e.segmentRepo.CacheResults(ctx, segmentID, allUserIDs); err != nil {
+				e.log.Warnf("failed to cache results: %v", err)
+			}
+		}
+
+		// Update segment metadata
+		if err := e.segmentRepo.UpdateEvaluationMetadata(ctx, segmentID, total, time.Now()); err != nil {
+			e.log.Warnf("failed to update evaluation metadata: %v", err)
+		}
+
+		// Record successful evaluation
+		e.recordEvaluation(ctx, segmentID, result, "success", "")
+	}
 
 	return result, nil
 }

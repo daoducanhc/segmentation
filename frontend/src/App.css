@@ -58,6 +58,14 @@ main { flex: 1; padding: 1.5rem; overflow-y: auto; }
   padding: 0.25rem 0.5rem; background: #475569; border-radius: 4px;
   font-size: 0.7rem; font-weight: 600; color: #94a3b8;
 }
+.selected-criteria .logic-selector {
+  padding: 0.4rem 0.6rem; background: #3b82f6; border: none;
+  color: white; border-radius: 4px; font-size: 0.75rem; font-weight: 600;
+  cursor: pointer; min-width: 70px;
+}
+.selected-criteria .logic-selector:hover {
+  background: #2563eb;
+}
 .selected-criteria .field {
   padding: 0.5rem 0.75rem; background: #1e293b; border: 2px solid;
   border-radius: 4px; font-weight: 500;
@@ -70,6 +78,47 @@ main { flex: 1; padding: 1.5rem; overflow-y: auto; }
 .selected-criteria .remove {
   padding: 0.25rem; background: transparent; border: none; color: #ef4444;
   cursor: pointer; margin-left: auto;
+}
+
+/* Group styles */
+.criteria-group {
+  border: 2px solid #475569; border-radius: 6px; padding: 0.75rem;
+  background: #1e293b; margin-bottom: 0.5rem; transition: all 0.2s;
+}
+
+.group-drag-over .criteria-group {
+  border-color: #3b82f6; background: #1e3a5f;
+}
+
+.criteria-group .group-header {
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+}
+
+.criteria-group .group-label {
+  font-weight: 600; color: #94a3b8; font-size: 0.875rem;
+}
+
+.criteria-group .group-content {
+  border-left: 2px solid #475569; padding-left: 0.5rem;
+}
+
+.criteria-group .group-footer {
+  color: #94a3b8; font-weight: 600; font-size: 0.875rem; margin-top: 0.5rem;
+}
+
+.builder-controls {
+  margin-top: 1rem; display: flex; gap: 0.5rem;
+}
+
+.add-group-btn {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1rem; background: #475569; border: none;
+  color: white; border-radius: 6px; cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.add-group-btn:hover {
+  background: #64748b;
 }
 
 .actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
@@ -114,3 +163,101 @@ td button:hover { background: #475569; }
   background: #3b82f6; border: none; cursor: pointer;
 }
 .upload-panel button:hover { filter: brightness(1.1); }
+
+/* Cancel button for edit mode */
+.cancel-btn {
+  padding: 0.5rem 1rem; background: #ef4444; border: none; color: white;
+  border-radius: 6px; cursor: pointer; font-size: 0.875rem;
+}
+.cancel-btn:hover { filter: brightness(1.1); }
+
+/* Composite Panel Styles */
+.composite-panel { padding: 2rem; max-width: 1000px; margin: 0 auto; }
+.composite-panel h3 { 
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; 
+}
+.composite-panel .hint { 
+  color: #64748b; margin-bottom: 1.5rem; font-size: 0.875rem; 
+}
+
+.composite-header {
+  display: flex; gap: 1rem; margin-bottom: 1.5rem;
+}
+.composite-header input, .composite-header select {
+  padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155;
+  color: #e2e8f0; border-radius: 6px; font-size: 1rem;
+}
+.composite-header input { flex: 1; }
+.composite-header select { width: 200px; }
+
+.composite-builder {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;
+}
+.composite-builder h4 {
+  color: #94a3b8; font-size: 0.875rem; margin-bottom: 1rem;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+.available-segments, .selected-segments {
+  background: #1e293b; border-radius: 8px; padding: 1rem;
+  min-height: 250px; border: 1px solid #334155;
+}
+
+.segment-chip {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1rem; background: #334155; border-radius: 6px;
+  margin-bottom: 0.5rem; cursor: pointer; transition: all 0.2s;
+}
+.segment-chip:hover { background: #475569; }
+.segment-chip .type-badge {
+  margin-left: auto; padding: 0.2rem 0.4rem; background: #475569;
+  border-radius: 4px; font-size: 0.7rem; font-weight: 600;
+}
+.segment-chip.available { border-left: 3px solid #3b82f6; }
+.segment-chip.selected { 
+  border-left: 3px solid #22c55e; cursor: default; flex-wrap: wrap;
+}
+
+.segment-chip .negate-btn {
+  padding: 0.25rem 0.5rem; background: #475569; border: none;
+  border-radius: 4px; color: #94a3b8; cursor: pointer; font-size: 0.75rem;
+  min-width: 40px;
+}
+.segment-chip .negate-btn.active {
+  background: #ef4444; color: white;
+}
+.segment-chip .negate-btn:hover { filter: brightness(1.2); }
+
+.segment-chip .name { flex: 1; }
+.segment-chip .remove-btn {
+  padding: 0.25rem; background: transparent; border: none;
+  color: #ef4444; cursor: pointer;
+}
+.segment-chip .remove-btn:hover { color: #f87171; }
+
+.segment-chip .logic-badge {
+  padding: 0.25rem 0.5rem; background: #3b82f6; border-radius: 4px;
+  font-size: 0.7rem; font-weight: 600; color: white; margin-right: 0.5rem;
+}
+
+.segment-chip .logic-selector {
+  padding: 0.4rem 0.6rem; background: #3b82f6; border: none;
+  color: white; border-radius: 4px; font-size: 0.75rem; font-weight: 600;
+  cursor: pointer; min-width: 70px; margin-right: 0.5rem;
+}
+.segment-chip .logic-selector:hover {
+  background: #2563eb;
+}
+
+.empty { color: #64748b; text-align: center; padding: 2rem; }
+
+.composite-actions { display: flex; gap: 1rem; }
+.composite-actions button {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1.5rem; border: none; border-radius: 6px;
+  font-size: 1rem; cursor: pointer; transition: all 0.2s;
+}
+.composite-actions button:first-child { background: #475569; color: white; }
+.composite-actions button:last-child { background: #22c55e; color: white; }
+.composite-actions button:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.composite-actions button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
