@@ -536,7 +536,7 @@ function App() {
     setLoading(false);
   };
 
-  const categories = ['activity', 'payment', 'churned', 'profile', 'revenue'];
+  const categories = ['activity', 'payment', 'churned', 'profile', 'revenue', 'vip'];
 
   const getSegmentTypeLabel = (definition: any): string => {
     if (!definition?.type) return 'Unknown';

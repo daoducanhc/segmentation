@@ -117,17 +117,19 @@ func (g *SQLGenerator) generateCompositeSQL(def *v1.SegmentDefinition) (string, 
 }
 
 // generateUserConditionsSQL generates SQL for user conditions
-// Handles mixed fields from different tables (summary vs users) by:
+// Handles mixed fields from different tables (summary vs users vs daily_activity) by:
 // - Using summary table if it has all needed fields
 // - Using users table if it has all needed fields
+// - Using daily_activity table for aggregated fields
 // - Using subqueries/joins for mixed fields
 func (g *SQLGenerator) generateUserConditionsSQL(group *v1.ConditionGroup) (string, error) {
 	// Analyze which tables are needed
 	hasSummaryFields := g.needsSummaryTable(group)
 	hasUserFields := g.needsUserTable(group)
+	hasDailyFields := g.needsDailyActivityTable(group)
 
 	// If only one table is needed, use it directly
-	if hasSummaryFields && !hasUserFields {
+	if hasSummaryFields && !hasUserFields && !hasDailyFields {
 		whereClause, err := g.generateConditionGroupSQL(group)
 		if err != nil {
 			return "", err
@@ -135,7 +137,7 @@ func (g *SQLGenerator) generateUserConditionsSQL(group *v1.ConditionGroup) (stri
 		return fmt.Sprintf("SELECT DISTINCT user_id FROM %s FINAL WHERE %s", g.summaryTable, whereClause), nil
 	}
 
-	if !hasSummaryFields && hasUserFields {
+	if !hasSummaryFields && hasUserFields && !hasDailyFields {
 		whereClause, err := g.generateConditionGroupSQL(group)
 		if err != nil {
 			return "", err
@@ -143,8 +145,161 @@ func (g *SQLGenerator) generateUserConditionsSQL(group *v1.ConditionGroup) (stri
 		return fmt.Sprintf("SELECT DISTINCT user_id FROM %s FINAL WHERE %s", g.usersTable, whereClause), nil
 	}
 
+	// If daily activity fields are involved, use the aggregated approach
+	if hasDailyFields {
+		return g.generateAggregatedUserConditionSQL(group)
+	}
+
 	// Mixed fields - need to split conditions and join
 	return g.generateMixedTableSQL(group)
+}
+
+// needsDailyActivityTable checks if condition group uses daily activity table fields
+func (g *SQLGenerator) needsDailyActivityTable(group *v1.ConditionGroup) bool {
+	if group == nil {
+		return false
+	}
+
+	// Check direct conditions
+	for _, cond := range group.Conditions {
+		if isDailyActivityField(cond.Field) {
+			return true
+		}
+	}
+
+	// Check nested groups
+	for _, subGroup := range group.Groups {
+		if g.needsDailyActivityTable(subGroup) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// generateAggregatedUserConditionSQL generates SQL for conditions involving daily activity aggregations
+func (g *SQLGenerator) generateAggregatedUserConditionSQL(group *v1.ConditionGroup) (string, error) {
+	// Build aggregate SELECT with proper WHERE/HAVING clauses for daily activity fields
+	// For max_vip_level: MAX(max_vip_level)
+	// For purchase counts: SUM(webshop_purchase_count), etc.
+	
+	dailyWhereClause, havingClause, userWhereClause, err := g.buildDailyActivityClauses(group)
+	if err != nil {
+		return "", err
+	}
+
+	dailyWhereSQL := ""
+	if dailyWhereClause != "" && dailyWhereClause != "1=1" {
+		dailyWhereSQL = " WHERE " + dailyWhereClause
+	}
+
+	query := fmt.Sprintf(`SELECT user_id FROM (
+	SELECT 
+		d.user_id,
+		MAX(d.max_vip_level) as max_vip_level,
+		SUM(d.webshop_purchase_count) as webshop_purchase_count,
+		SUM(d.google_purchase_count) as google_purchase_count,
+		SUM(d.apple_purchase_count) as apple_purchase_count,
+		SUM(d.third_party_purchase_count) as third_party_purchase_count,
+		SUM(d.purchase_count) as purchase_count,
+		SUM(d.revenue) as revenue
+	FROM %s d FINAL%s
+	GROUP BY d.user_id
+) aggregated`, g.activityTable, dailyWhereSQL)
+
+	if havingClause != "" && havingClause != "1=1" {
+		query += " WHERE " + havingClause
+	}
+	
+	// If there are also user table conditions, join and apply
+	if userWhereClause != "" && userWhereClause != "1=1" {
+		query = fmt.Sprintf(`SELECT DISTINCT aggregated.user_id FROM (%s) aggregated
+JOIN %s u FINAL ON aggregated.user_id = u.user_id
+WHERE %s`, query, g.usersTable, userWhereClause)
+	}
+
+	return query, nil
+}
+
+// buildDailyActivityClauses separates conditions into three levels:
+// 1. dailyWhereClause - pre-aggregation filters on user_daily_activity (e.g., app_id)
+// 2. havingClause - post-aggregation filters on aggregated results (e.g., max_vip_level)
+// 3. userWhereClause - filters on users table (e.g., country, platform)
+func (g *SQLGenerator) buildDailyActivityClauses(group *v1.ConditionGroup) (dailyWhereClause string, havingClause string, userWhereClause string, err error) {
+	if group == nil {
+		return "1=1", "1=1", "1=1", nil
+	}
+
+	var dailyWhereParts []string
+	var havingParts []string
+	var userWhereParts []string
+
+	// Process conditions
+	for _, cond := range group.Conditions {
+		condSQL, err := g.generateConditionSQL(cond)
+		if err != nil {
+			return "", "", "", err
+		}
+		if condSQL == "" {
+			continue
+		}
+
+		// Categorize the condition based on field
+		if cond.Field == "app_id" {
+			// app_id is a pre-aggregation filter on daily activity table
+			dailyWhereParts = append(dailyWhereParts, "d."+condSQL)
+		} else if isDailyActivityField(cond.Field) {
+			// Aggregated fields (max_vip_level, purchase_count, etc.) - post-aggregation filter
+			havingParts = append(havingParts, condSQL)
+		} else {
+			// User table fields (country, platform, etc.)
+			userWhereParts = append(userWhereParts, condSQL)
+		}
+	}
+
+	// Process nested groups
+	for _, subGroup := range group.Groups {
+		subDaily, subHaving, subUser, err := g.buildDailyActivityClauses(subGroup)
+		if err != nil {
+			return "", "", "", err
+		}
+		if subDaily != "" && subDaily != "1=1" {
+			dailyWhereParts = append(dailyWhereParts, "("+subDaily+")")
+		}
+		if subHaving != "" && subHaving != "1=1" {
+			havingParts = append(havingParts, "("+subHaving+")")
+		}
+		if subUser != "" && subUser != "1=1" {
+			userWhereParts = append(userWhereParts, "("+subUser+")")
+		}
+	}
+
+	// Determine operator
+	op := " AND "
+	if group.Operator == v1.LogicalOperator_LOGICAL_OPERATOR_OR {
+		op = " OR "
+	}
+
+	// Build final clauses
+	if len(dailyWhereParts) > 0 {
+		dailyWhereClause = strings.Join(dailyWhereParts, op)
+	} else {
+		dailyWhereClause = "1=1"
+	}
+
+	if len(havingParts) > 0 {
+		havingClause = strings.Join(havingParts, op)
+	} else {
+		havingClause = "1=1"
+	}
+
+	if len(userWhereParts) > 0 {
+		userWhereClause = strings.Join(userWhereParts, op)
+	} else {
+		userWhereClause = "1=1"
+	}
+
+	return dailyWhereClause, havingClause, userWhereClause, nil
 }
 
 // generateMixedTableSQL handles conditions that span both summary and users tables
@@ -183,7 +338,7 @@ func (g *SQLGenerator) needsUserTable(group *v1.ConditionGroup) bool {
 
 	// Check direct conditions
 	for _, cond := range group.Conditions {
-		if !isSummaryField(cond.Field) {
+		if isUsersTableField(cond.Field) || !isSummaryField(cond.Field) {
 			return true
 		}
 	}
@@ -247,6 +402,38 @@ func isSummaryField(field string) bool {
 	return summaryFields[field]
 }
 
+// isUsersTableField checks if field belongs to users table
+func isUsersTableField(field string) bool {
+	usersFields := map[string]bool{
+		"user_id":         true,
+		"platform":        true,
+		"country":         true,
+		"language":        true,
+		"os":              true,
+		"is_paying_user":  true, // NPU criteria: is_paying_user = 0 means never paid
+		"total_revenue":   true,
+		"total_purchases": true,
+		"first_seen_at":   true,
+		"last_seen_at":    true,
+	}
+	return usersFields[field]
+}
+
+// isDailyActivityField checks if field requires user_daily_activity table aggregation
+func isDailyActivityField(field string) bool {
+	dailyFields := map[string]bool{
+		"app_id":                     true, // Filter for game-specific VIP levels
+		"max_vip_level":              true, // MAX(max_vip_level)
+		"webshop_purchase_count":     true,
+		"google_purchase_count":      true,
+		"apple_purchase_count":       true,
+		"third_party_purchase_count": true,
+		"purchase_count":             true,
+		"revenue":                    true,
+	}
+	return dailyFields[field]
+}
+
 // generateConditionGroupSQL generates SQL WHERE clause for a condition group
 func (g *SQLGenerator) generateConditionGroupSQL(group *v1.ConditionGroup) (string, error) {
 	if group == nil {
@@ -308,6 +495,28 @@ func (g *SQLGenerator) generateConditionSQL(cond *v1.Condition) (string, error) 
 	value := g.conditionValueToSQL(cond.Value)
 
 	var result string
+
+	// Special handling for NPU (Non-Paying User) criteria
+	// is_paying_user field: when user selects "NPU = true", we need is_paying_user = 0
+	if field == "is_paying_user" {
+		boolValue := false
+		if cond.Value != nil {
+			if bv, ok := cond.Value.Value.(*v1.ConditionValue_BoolValue); ok {
+				boolValue = bv.BoolValue
+			}
+		}
+		// NPU = true means user has never paid (is_paying_user = 0)
+		// NPU = false means user has paid (is_paying_user = 1)
+		if boolValue {
+			result = "is_paying_user = 0"
+		} else {
+			result = "is_paying_user = 1"
+		}
+		if cond.Negated {
+			result = "NOT (" + result + ")"
+		}
+		return result, nil
+	}
 
 	// Handle array fields (platform, country, language, os) stored as comma-separated strings
 	if isArrayField(field) {
