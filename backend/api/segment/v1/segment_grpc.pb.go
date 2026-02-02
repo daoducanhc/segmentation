@@ -30,6 +30,7 @@ const (
 	SegmentService_UploadStaticSegment_FullMethodName          = "/api.segment.v1.SegmentService/UploadStaticSegment"
 	SegmentService_AddUsersToStaticSegment_FullMethodName      = "/api.segment.v1.SegmentService/AddUsersToStaticSegment"
 	SegmentService_RemoveUsersFromStaticSegment_FullMethodName = "/api.segment.v1.SegmentService/RemoveUsersFromStaticSegment"
+	SegmentService_GetDistinctValues_FullMethodName            = "/api.segment.v1.SegmentService/GetDistinctValues"
 )
 
 // SegmentServiceClient is the client API for SegmentService service.
@@ -58,6 +59,8 @@ type SegmentServiceClient interface {
 	AddUsersToStaticSegment(ctx context.Context, in *AddUsersToStaticSegmentRequest, opts ...grpc.CallOption) (*AddUsersToStaticSegmentResponse, error)
 	// RemoveUsersFromStaticSegment removes users from a static segment
 	RemoveUsersFromStaticSegment(ctx context.Context, in *RemoveUsersFromStaticSegmentRequest, opts ...grpc.CallOption) (*RemoveUsersFromStaticSegmentResponse, error)
+	// GetDistinctValues returns distinct values for a profile field
+	GetDistinctValues(ctx context.Context, in *GetDistinctValuesRequest, opts ...grpc.CallOption) (*GetDistinctValuesResponse, error)
 }
 
 type segmentServiceClient struct {
@@ -167,6 +170,15 @@ func (c *segmentServiceClient) RemoveUsersFromStaticSegment(ctx context.Context,
 	return out, nil
 }
 
+func (c *segmentServiceClient) GetDistinctValues(ctx context.Context, in *GetDistinctValuesRequest, opts ...grpc.CallOption) (*GetDistinctValuesResponse, error) {
+	out := new(GetDistinctValuesResponse)
+	err := c.cc.Invoke(ctx, SegmentService_GetDistinctValues_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SegmentServiceServer is the server API for SegmentService service.
 // All implementations must embed UnimplementedSegmentServiceServer
 // for forward compatibility
@@ -193,6 +205,8 @@ type SegmentServiceServer interface {
 	AddUsersToStaticSegment(context.Context, *AddUsersToStaticSegmentRequest) (*AddUsersToStaticSegmentResponse, error)
 	// RemoveUsersFromStaticSegment removes users from a static segment
 	RemoveUsersFromStaticSegment(context.Context, *RemoveUsersFromStaticSegmentRequest) (*RemoveUsersFromStaticSegmentResponse, error)
+	// GetDistinctValues returns distinct values for a profile field
+	GetDistinctValues(context.Context, *GetDistinctValuesRequest) (*GetDistinctValuesResponse, error)
 	mustEmbedUnimplementedSegmentServiceServer()
 }
 
@@ -232,6 +246,9 @@ func (UnimplementedSegmentServiceServer) AddUsersToStaticSegment(context.Context
 }
 func (UnimplementedSegmentServiceServer) RemoveUsersFromStaticSegment(context.Context, *RemoveUsersFromStaticSegmentRequest) (*RemoveUsersFromStaticSegmentResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RemoveUsersFromStaticSegment not implemented")
+}
+func (UnimplementedSegmentServiceServer) GetDistinctValues(context.Context, *GetDistinctValuesRequest) (*GetDistinctValuesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDistinctValues not implemented")
 }
 func (UnimplementedSegmentServiceServer) mustEmbedUnimplementedSegmentServiceServer() {}
 
@@ -444,6 +461,24 @@ func _SegmentService_RemoveUsersFromStaticSegment_Handler(srv interface{}, ctx c
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SegmentService_GetDistinctValues_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDistinctValuesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SegmentServiceServer).GetDistinctValues(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SegmentService_GetDistinctValues_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SegmentServiceServer).GetDistinctValues(ctx, req.(*GetDistinctValuesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SegmentService_ServiceDesc is the grpc.ServiceDesc for SegmentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -494,6 +529,10 @@ var SegmentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveUsersFromStaticSegment",
 			Handler:    _SegmentService_RemoveUsersFromStaticSegment_Handler,
+		},
+		{
+			MethodName: "GetDistinctValues",
+			Handler:    _SegmentService_GetDistinctValues_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

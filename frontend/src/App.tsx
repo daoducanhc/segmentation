@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDraggable, useDroppable, DndContext } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { Plus, X, Play, Upload, Eye, Trash2, Edit2, Save, GitMerge } from 'lucide-react';
@@ -80,6 +80,33 @@ function App() {
   // Composite segment state
   const [compositeName, setCompositeName] = useState('');
   const [selectedSegments, setSelectedSegments] = useState<(ChildSegmentRef & { operator?: number })[]>([]);
+  
+  // Profile field distinct values
+  const [profileValues, setProfileValues] = useState<Record<string, string[]>>({
+    platform: [],
+    country: [],
+    os: [],
+    language: [],
+    app_id: []
+  });
+
+  // Load profile field distinct values
+  useEffect(() => {
+    const loadProfileValues = async () => {
+      try {
+        const fields = ['platform', 'country', 'os', 'language', 'app_id'];
+        const results: Record<string, string[]> = {};
+        for (const field of fields) {
+          const data = await api.getDistinctValues(field);
+          results[field] = data.values || [];
+        }
+        setProfileValues(results);
+      } catch (e) {
+        console.error('Failed to load profile values:', e);
+      }
+    };
+    loadProfileValues();
+  }, []);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const overId = event.over?.id;
@@ -567,12 +594,12 @@ function App() {
             {s.item.label}
           </span>
           <select value={s.operator} onChange={e => updateCriteria(s.id, 'operator', Number(e.target.value))}>
-            <option value={1}>= (EQ)</option>
-            <option value={2}>≠ (NEQ)</option>
-            <option value={3}>&gt; (GT)</option>
-            <option value={4}>≥ (GTE)</option>
-            <option value={5}>&lt; (LT)</option>
-            <option value={6}>≤ (LTE)</option>
+            <option value={1}>=</option>
+            <option value={2}>≠</option>
+            <option value={3}>&gt;</option>
+            <option value={4}>≥</option>
+            <option value={5}>&lt;</option>
+            <option value={6}>≤</option>
             <option value={7}>IN</option>
             <option value={8}>NOT IN</option>
           </select>
@@ -581,6 +608,33 @@ function App() {
               <option value="true">Yes</option>
               <option value="false">No</option>
             </select>
+          ) : s.item.category === 'profile' && profileValues[s.item.field]?.length > 0 ? (
+            (s.operator === 7 || s.operator === 8) ? (
+              <select 
+                value={s.value.split(',').map(v => v.trim()).filter(Boolean)} 
+                onChange={e => {
+                  const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
+                  updateCriteria(s.id, 'value', selected.join(', '));
+                }}
+                multiple
+                size={Math.min(5, profileValues[s.item.field].length)}
+                style={{ minWidth: '150px' }}
+              >
+                {profileValues[s.item.field].map(val => (
+                  <option key={val} value={val}>{val}</option>
+                ))}
+              </select>
+            ) : (
+              <select 
+                value={s.value} 
+                onChange={e => updateCriteria(s.id, 'value', e.target.value)}
+              >
+                <option value="">-- Select --</option>
+                {profileValues[s.item.field].map(val => (
+                  <option key={val} value={val}>{val}</option>
+                ))}
+              </select>
+            )
           ) : (
             <input
               type={s.item.valueType === 'number' ? 'number' : 'text'}

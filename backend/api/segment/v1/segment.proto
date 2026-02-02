@@ -141,6 +141,13 @@ service SegmentService {
       delete: "/v1/segments/{id}/users"
     };
   }
+
+  // GetDistinctValues returns distinct values for a profile field
+  rpc GetDistinctValues(GetDistinctValuesRequest) returns (GetDistinctValuesResponse) {
+    option (google.api.http) = {
+      get: "/v1/segments/distinct-values/{field}"
+    };
+  }
 }
 
 // LogicalOperator defines the logical operator for combining conditions
@@ -439,4 +446,13 @@ message RemoveUsersFromStaticSegmentRequest {
 
 message RemoveUsersFromStaticSegmentResponse {
   int32 users_removed = 1;
+}
+
+// GetDistinctValuesRequest - Get distinct values for a profile field
+message GetDistinctValuesRequest {
+  string field = 1; // Field name: platform, country, os, language, app_id
+}
+
+message GetDistinctValuesResponse {
+  repeated string values = 1; // List of distinct values
 }

@@ -393,3 +393,28 @@ func (s *SegmentService) RemoveUsersFromStaticSegment(ctx context.Context, req *
 		UsersRemoved: int32(removed),
 	}, nil
 }
+
+// GetDistinctValues returns distinct values for a profile field
+func (s *SegmentService) GetDistinctValues(ctx context.Context, req *v1.GetDistinctValuesRequest) (*v1.GetDistinctValuesResponse, error) {
+	// Validate field name
+	validFields := map[string]bool{
+		"platform": true,
+		"country":  true,
+		"os":       true,
+		"language": true,
+		"app_id":   true,
+	}
+
+	if !validFields[req.Field] {
+		return nil, fmt.Errorf("invalid field: %s (allowed: platform, country, os, language, app_id)", req.Field)
+	}
+
+	values, err := s.segmentRepo.GetDistinctValues(ctx, req.Field)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get distinct values: %w", err)
+	}
+
+	return &v1.GetDistinctValuesResponse{
+		Values: values,
+	}, nil
+}

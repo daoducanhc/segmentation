@@ -23,6 +23,7 @@ const OperationSegmentServiceAddUsersToStaticSegment = "/api.segment.v1.SegmentS
 const OperationSegmentServiceCreateSegment = "/api.segment.v1.SegmentService/CreateSegment"
 const OperationSegmentServiceDeleteSegment = "/api.segment.v1.SegmentService/DeleteSegment"
 const OperationSegmentServiceEvaluateSegment = "/api.segment.v1.SegmentService/EvaluateSegment"
+const OperationSegmentServiceGetDistinctValues = "/api.segment.v1.SegmentService/GetDistinctValues"
 const OperationSegmentServiceGetSegment = "/api.segment.v1.SegmentService/GetSegment"
 const OperationSegmentServiceGetSegmentUserCount = "/api.segment.v1.SegmentService/GetSegmentUserCount"
 const OperationSegmentServiceListSegments = "/api.segment.v1.SegmentService/ListSegments"
@@ -40,6 +41,8 @@ type SegmentServiceHTTPServer interface {
 	DeleteSegment(context.Context, *DeleteSegmentRequest) (*DeleteSegmentResponse, error)
 	// EvaluateSegment EvaluateSegment evaluates a segment and returns user IDs
 	EvaluateSegment(context.Context, *EvaluateSegmentRequest) (*EvaluateSegmentResponse, error)
+	// GetDistinctValues GetDistinctValues returns distinct values for a profile field
+	GetDistinctValues(context.Context, *GetDistinctValuesRequest) (*GetDistinctValuesResponse, error)
 	// GetSegment GetSegment retrieves a segment by ID
 	GetSegment(context.Context, *GetSegmentRequest) (*GetSegmentResponse, error)
 	// GetSegmentUserCount GetSegmentUserCount returns the count of users in a segment
@@ -69,6 +72,7 @@ func RegisterSegmentServiceHTTPServer(s *http.Server, srv SegmentServiceHTTPServ
 	r.POST("/v1/segments/upload", _SegmentService_UploadStaticSegment0_HTTP_Handler(srv))
 	r.POST("/v1/segments/{id}/users", _SegmentService_AddUsersToStaticSegment0_HTTP_Handler(srv))
 	r.DELETE("/v1/segments/{id}/users", _SegmentService_RemoveUsersFromStaticSegment0_HTTP_Handler(srv))
+	r.GET("/v1/segments/distinct-values/{field}", _SegmentService_GetDistinctValues0_HTTP_Handler(srv))
 }
 
 func _SegmentService_CreateSegment0_HTTP_Handler(srv SegmentServiceHTTPServer) func(ctx http.Context) error {
@@ -319,6 +323,28 @@ func _SegmentService_RemoveUsersFromStaticSegment0_HTTP_Handler(srv SegmentServi
 	}
 }
 
+func _SegmentService_GetDistinctValues0_HTTP_Handler(srv SegmentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetDistinctValuesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSegmentServiceGetDistinctValues)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetDistinctValues(ctx, req.(*GetDistinctValuesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetDistinctValuesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type SegmentServiceHTTPClient interface {
 	// AddUsersToStaticSegment AddUsersToStaticSegment adds users to an existing static segment
 	AddUsersToStaticSegment(ctx context.Context, req *AddUsersToStaticSegmentRequest, opts ...http.CallOption) (rsp *AddUsersToStaticSegmentResponse, err error)
@@ -328,6 +354,8 @@ type SegmentServiceHTTPClient interface {
 	DeleteSegment(ctx context.Context, req *DeleteSegmentRequest, opts ...http.CallOption) (rsp *DeleteSegmentResponse, err error)
 	// EvaluateSegment EvaluateSegment evaluates a segment and returns user IDs
 	EvaluateSegment(ctx context.Context, req *EvaluateSegmentRequest, opts ...http.CallOption) (rsp *EvaluateSegmentResponse, err error)
+	// GetDistinctValues GetDistinctValues returns distinct values for a profile field
+	GetDistinctValues(ctx context.Context, req *GetDistinctValuesRequest, opts ...http.CallOption) (rsp *GetDistinctValuesResponse, err error)
 	// GetSegment GetSegment retrieves a segment by ID
 	GetSegment(ctx context.Context, req *GetSegmentRequest, opts ...http.CallOption) (rsp *GetSegmentResponse, err error)
 	// GetSegmentUserCount GetSegmentUserCount returns the count of users in a segment
@@ -402,6 +430,20 @@ func (c *SegmentServiceHTTPClientImpl) EvaluateSegment(ctx context.Context, in *
 	opts = append(opts, http.Operation(OperationSegmentServiceEvaluateSegment))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetDistinctValues GetDistinctValues returns distinct values for a profile field
+func (c *SegmentServiceHTTPClientImpl) GetDistinctValues(ctx context.Context, in *GetDistinctValuesRequest, opts ...http.CallOption) (*GetDistinctValuesResponse, error) {
+	var out GetDistinctValuesResponse
+	pattern := "/v1/segments/distinct-values/{field}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationSegmentServiceGetDistinctValues))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

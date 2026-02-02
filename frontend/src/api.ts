@@ -60,3 +60,7 @@ export const addUsersToSegment = async (
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data);
 };
+
+// Get distinct values for profile fields
+export const getDistinctValues = (field: string) =>
+  api.get(`/segments/distinct-values/${field}`).then(r => r.data);

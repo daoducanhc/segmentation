@@ -4,6 +4,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -520,6 +521,51 @@ func (r *SegmentRepo) RemoveUsersFromStaticSegment(ctx context.Context, segmentI
 func (r *SegmentRepo) ClearStaticSegmentUsers(ctx context.Context, segmentID string) error {
 	clearQuery := `ALTER TABLE segmentation.segment_results DELETE WHERE segment_id = ?`
 	return r.data.ExecuteExec(ctx, clearQuery, segmentID)
+}
+
+// GetDistinctValues returns distinct values for a profile field from users table or user_daily_activity
+func (r *SegmentRepo) GetDistinctValues(ctx context.Context, field string) ([]string, error) {
+	// Map field to appropriate table and column
+	// Note: Some fields may contain comma-separated values, so we need to split them
+	var query string
+	switch field {
+	case "platform", "country", "language", "os":
+		// From users table - split comma-separated values and get distinct items
+		query = fmt.Sprintf(`
+			SELECT DISTINCT arrayJoin(splitByChar(',', %s)) as value 
+			FROM segmentation.users FINAL 
+			WHERE %s != '' AND value != ''
+			ORDER BY value 
+			LIMIT 1000
+		`, field, field)
+	case "app_id":
+		// From user_daily_activity table
+		query = `SELECT DISTINCT app_id FROM segmentation.user_daily_activity FINAL WHERE app_id != '' ORDER BY app_id LIMIT 1000`
+	default:
+		return nil, fmt.Errorf("unsupported field: %s", field)
+	}
+
+	rows, err := r.data.ExecuteQuery(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query distinct values: %w", err)
+	}
+	defer rows.Close()
+
+	var values []string
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			r.log.Warnf("failed to scan value: %v", err)
+			continue
+		}
+		// Trim whitespace from split values
+		value = strings.TrimSpace(value)
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+
+	return values, nil
 }
 
 func boolToUint8(b bool) uint8 {
