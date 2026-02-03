@@ -1,7 +1,11 @@
 import axios from 'axios';
 import type { Segment, SegmentDefinition } from './types';
 
-const API_BASE = 'http://localhost:8000/v1';
+// If HOST is empty, it will use the proxy target defined in vite.config.ts (dev) or nginx proxy (production).
+export const HOST = '';
+
+// API base path - always use /v1 prefix (proxied by vite in dev, nginx in production)
+const API_BASE = HOST + '/v1';
 
 const api = axios.create({
   baseURL: API_BASE,

@@ -41,16 +41,11 @@ func NewKafkaConsumer(cfg *conf.Kafka, eventRepo *data.EventRepo, userRepo *data
 	config := sarama.NewConfig()
 	config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
-
-	if cfg.Consumer != nil && cfg.Consumer.Offset != 0 {
-		config.Consumer.Offsets.Initial = cfg.Consumer.Offset
-	}
-
 	config.Version = sarama.V2_8_0_0
 
 	group := "segmentation-consumer"
-	if cfg.Consumer != nil && cfg.Consumer.Group != "" {
-		group = cfg.Consumer.Group
+	if cfg.GroupId != "" {
+		group = cfg.GroupId
 	}
 
 	client, err := sarama.NewConsumerGroup(cfg.Address, group, config)
@@ -58,11 +53,9 @@ func NewKafkaConsumer(cfg *conf.Kafka, eventRepo *data.EventRepo, userRepo *data
 		return nil, err
 	}
 
-	var topics []string
-	var ungrouped []string
-	if cfg.Consumer != nil {
-		topics = cfg.Consumer.Topics
-		ungrouped = cfg.Consumer.UngroupTopics
+	topics := []string{cfg.Topic}
+	if cfg.Topic == "" {
+		topics = []string{"user_events"} // default
 	}
 
 	return &KafkaConsumer{
@@ -71,7 +64,7 @@ func NewKafkaConsumer(cfg *conf.Kafka, eventRepo *data.EventRepo, userRepo *data
 		userRepo:  userRepo,
 		log:       log.NewHelper(logger),
 		topics:    topics,
-		ungrouped: ungrouped,
+		ungrouped: []string{},
 	}, nil
 }
 

@@ -55,6 +55,33 @@ func main() {
 		log.NewHelper(logger).Fatalf("failed to scan config: %v", err)
 	}
 
+	// ClickHouse
+	if addr := configx.GetEnvOrString("CLICKHOUSE_ADDR", ""); addr != "" {
+		bc.Data.Clickhouse.Addr = addr
+	}
+	if db := configx.GetEnvOrString("CLICKHOUSE_DATABASE", ""); db != "" {
+		bc.Data.Clickhouse.Database = db
+	}
+	if user := configx.GetEnvOrString("CLICKHOUSE_USERNAME", ""); user != "" {
+		bc.Data.Clickhouse.Username = user
+	}
+	if pass := configx.GetEnvOrString("CLICKHOUSE_PASSWORD", ""); pass != "" {
+		bc.Data.Clickhouse.Password = pass
+	}
+
+	// Kafka
+	if bc.Kafka != nil {
+		if address := configx.GetEnvOrString("KAFKA_ADDRESS", ""); address != "" {
+			bc.Kafka.Address = configx.GetEnvOrStrings("KAFKA_ADDRESS", bc.Kafka.Address)
+		}
+		if topic := configx.GetEnvOrString("KAFKA_TOPIC", ""); topic != "" {
+			bc.Kafka.Topic = topic
+		}
+		if groupID := configx.GetEnvOrString("KAFKA_GROUP_ID", ""); groupID != "" {
+			bc.Kafka.GroupId = groupID
+		}
+	}
+
 	// Load ThinkingData URLs from environment variables
 	if bc.ThinkingData != nil {
 		if bc.ThinkingData.VN == nil {
@@ -76,12 +103,27 @@ func main() {
 		log.NewHelper(logger).Infof("TD VN: url=%s, token_len=%d", bc.ThinkingData.VN.QueryURL, len(bc.ThinkingData.VN.QueryToken))
 	}
 
+	log.NewHelper(logger).Infof("ClickHouse: %s/%s", bc.Data.Clickhouse.Addr, bc.Data.Clickhouse.Database)
+	log.NewHelper(logger).Infof("Kafka: %v", bc.Kafka.Address)
+
 	// Initialize data layer
 	dataInstance, cleanup, err := data.NewData(bc.Data, logger)
 	if err != nil {
 		log.NewHelper(logger).Fatalf("failed to create data: %v", err)
 	}
 	defer cleanup()
+
+	// Run auto migration if enabled
+	if bc.Data.Clickhouse.AutoMigrate {
+		migrator := data.NewMigrator(dataInstance, logger)
+		migrationsDir := bc.Data.Clickhouse.MigrationsDir
+		if migrationsDir == "" {
+			migrationsDir = "migrations" // default path
+		}
+		if err := migrator.AutoMigrate(context.Background(), migrationsDir); err != nil {
+			log.NewHelper(logger).Fatalf("failed to run auto migration: %v", err)
+		}
+	}
 
 	// Initialize repositories
 	segmentRepo := data.NewSegmentRepo(dataInstance, logger)

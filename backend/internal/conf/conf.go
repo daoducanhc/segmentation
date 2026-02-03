@@ -68,26 +68,17 @@ type Clickhouse struct {
 	MaxOpenConns    int32  `yaml:"max_open_conns" json:"max_open_conns"`
 	MaxIdleConns    int32  `yaml:"max_idle_conns" json:"max_idle_conns"`
 	ConnMaxLifetime int64  `yaml:"conn_max_lifetime" json:"conn_max_lifetime"`
+	AutoMigrate     bool   `yaml:"auto_migrate" json:"auto_migrate"`
+	MigrationsDir   string `yaml:"migrations_dir" json:"migrations_dir"`
 }
 
 // Kafka configuration
 type Kafka struct {
-	Address  []string       `yaml:"address" json:"address"`
-	Producer *KafkaProducer `yaml:"producer" json:"producer"`
-	Consumer *KafkaConsumer `yaml:"consumer" json:"consumer"`
-}
-
-// KafkaProducer configuration
-type KafkaProducer struct {
-	Topics []string `yaml:"topics" json:"topics"`
-}
-
-// KafkaConsumer configuration
-type KafkaConsumer struct {
-	Offset        int64    `yaml:"offset" json:"offset"`
-	Group         string   `yaml:"group" json:"group"`
-	Topics        []string `yaml:"topics" json:"topics"`
-	UngroupTopics []string `yaml:"ungroup_topics" json:"ungroup_topics"`
+	Address        []string `yaml:"address" json:"address"`
+	Topic          string   `yaml:"topic" json:"topic"`
+	GroupId        string   `yaml:"group_id" json:"group_id"`
+	BatchSize      int32    `yaml:"batch_size" json:"batch_size"`
+	MaxWaitSeconds int32    `yaml:"max_wait_seconds" json:"max_wait_seconds"`
 }
 
 // ThinkingData configuration for event sync

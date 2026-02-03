@@ -10,8 +10,7 @@ server:
 
 data:
   clickhouse:
-    # Use localhost:9100 for local dev, mgp-clickhouse-local:9000 for docker
-    addr: localhost:9100
+    addr: localhost:8123
     database: segmentation
     username: default
     password: ""
@@ -19,10 +18,11 @@ data:
     max_open_conns: 10
     max_idle_conns: 5
     conn_max_lifetime: 60
+    auto_migrate: true
+    migrations_dir: "migrations"
 
 kafka:
-  brokers:
-    # Use localhost:29092 for local dev, mgp-kafka-local:9092 for docker
+  address:
     - localhost:29092
   topic: user_events
   group_id: segmentation_consumer

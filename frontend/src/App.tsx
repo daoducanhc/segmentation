@@ -191,36 +191,37 @@ function App() {
     setSelected([...selected, newGroup]);
   };
 
-  const addToGroup = (groupId: string, criteriaId: string) => {
-    const moveToGroup = (items: CriteriaGroup[]): { items: CriteriaGroup[], moved?: CriteriaGroup } => {
-      let movedItem: CriteriaGroup | undefined;
-      const filtered = items.filter(item => {
-        if (item.id === criteriaId) {
-          movedItem = { ...item, logicOperator: Operator.AND };
-          return false;
-        }
-        return true;
-      });
-      
-      const updated = filtered.map(item => {
-        if (item.id === groupId && item.type === 'group') {
-          const newItems = [...(item.items || [])];
-          if (movedItem) newItems.push(movedItem);
-          return { ...item, items: newItems };
-        } else if (item.type === 'group' && item.items) {
-          const result = moveToGroup(item.items);
-          if (result.moved && !movedItem) movedItem = result.moved;
-          return { ...item, items: result.items };
-        }
-        return item;
-      });
-      
-      return { items: updated, moved: movedItem };
-    };
-    
-    const result = moveToGroup(selected);
-    setSelected(result.items);
-  };
+  // Unused function - kept for future drag-and-drop feature
+  // const addToGroup = (groupId: string, criteriaId: string) => {
+  //   const moveToGroup = (items: CriteriaGroup[]): { items: CriteriaGroup[], moved?: CriteriaGroup } => {
+  //     let movedItem: CriteriaGroup | undefined;
+  //     const filtered = items.filter(item => {
+  //       if (item.id === criteriaId) {
+  //         movedItem = { ...item, logicOperator: Operator.AND };
+  //         return false;
+  //       }
+  //       return true;
+  //     });
+  //     
+  //     const updated = filtered.map(item => {
+  //       if (item.id === groupId && item.type === 'group') {
+  //         const newItems = [...(item.items || [])];
+  //         if (movedItem) newItems.push(movedItem);
+  //         return { ...item, items: newItems };
+  //       } else if (item.type === 'group' && item.items) {
+  //         const result = moveToGroup(item.items);
+  //         if (result.moved && !movedItem) movedItem = result.moved;
+  //         return { ...item, items: result.items };
+  //       }
+  //       return item;
+  //     });
+  //     
+  //     return { items: updated, moved: movedItem };
+  //   };
+  //   
+  //   const result = moveToGroup(selected);
+  //   setSelected(result.items);
+  // };
 
   const addCriteriaToGroup = (groupId: string, newItem: CriteriaGroup) => {
     const addToGroup = (items: CriteriaGroup[]): CriteriaGroup[] => {

@@ -1,0 +1,50 @@
+server:
+  http:
+    network: tcp
+    addr: 0.0.0.0:8000
+    timeout: 30
+  grpc:
+    network: tcp
+    addr: 0.0.0.0:9000
+    timeout: 30
+
+data:
+  clickhouse:
+    # Production ClickHouse - configured via environment variables
+    addr: ${CLICKHOUSE_ADDR:clickhouse:8123}
+    database: ${CLICKHOUSE_DATABASE:segmentation}
+    username: ${CLICKHOUSE_USERNAME:default}
+    password: ${CLICKHOUSE_PASSWORD:}
+    dial_timeout: 10
+    max_open_conns: 20
+    max_idle_conns: 10
+    conn_max_lifetime: 120
+    auto_migrate: true
+    migrations_dir: "/app/migrations"
+
+kafka:
+  address:
+    - ${KAFKA_ADDRESS:kafka:9092}
+  topic: ${KAFKA_TOPIC:user_events}
+  group_id: ${KAFKA_GROUP_ID:segmentation_consumer}
+  batch_size: 1000
+  max_wait_seconds: 5
+
+# ThinkingData event sync configuration
+# Credentials loaded from environment variables
+thinkingdata:
+  vn:
+    event_view: "v_event_8"
+  global:
+    event_view: "v_event_9"
+  
+  sync_interval_hours: 24
+  batch_size: 10000
+  lookback_days: 365
+  timeout_seconds: 120
+  sync_on_startup: false  # Disable auto-sync in production, use scheduler
+
+  event_types:
+    - app_page_view
+    - pay
+    - app_vip_level_up
