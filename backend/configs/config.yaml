@@ -10,109 +10,40 @@ server:
 
 data:
   clickhouse:
-    addr: localhost:8123
-    database: segmentation
-    username: default
-    password: ""
+    addr: ${CLICKHOUSE_ADDR}
+    database: ${CLICKHOUSE_DATABASE:segmentation}
+    username: ${CLICKHOUSE_USERNAME:default}
+    password: ${CLICKHOUSE_PASSWORD:}
     dial_timeout: 10
-    max_open_conns: 10
-    max_idle_conns: 5
-    conn_max_lifetime: 60
+    max_open_conns: 20
+    max_idle_conns: 10
+    conn_max_lifetime: 120
     auto_migrate: true
-    migrations_dir: "migrations"
+    migrations_dir: "/app/migrations"
 
 kafka:
   address:
-    - localhost:29092
-  topic: user_events
-  group_id: segmentation_consumer
+    - "127.0.0.1:29092"
+  topic: ""
+  group_id: ""
   batch_size: 1000
   max_wait_seconds: 5
 
 # ThinkingData event sync configuration
-# Note: query_url and query_token are loaded from environment variables:
-#   THINKINGDATA_VN_QUERY_URL, THINKINGDATA_VN_QUERY_TOKEN
-#   THINKINGDATA_GLOBAL_QUERY_URL, THINKINGDATA_GLOBAL_QUERY_TOKEN
+# Credentials loaded from environment variables
 thinkingdata:
-  # Region-specific endpoints
   vn:
     event_view: "v_event_8"
   global:
     event_view: "v_event_9"
   
-  # Common settings
   sync_interval_hours: 24
   batch_size: 10000
   lookback_days: 365
   timeout_seconds: 120
-  sync_on_startup: true             # Run TD sync immediately when server starts
-  
-  # Event types to sync for Phase 1 criteria
-  events:
-    # Page view event - for user activity tracking
-    # Filters: page_name IN ('home_view', 'home_page')
-    - event_name: "app_page_view"
-      fields:
-        - "#zone_offset"
-        - "#os"
-        - "#system_language"
-        - "#country_code"
-        - "plt_type"
-    
-    # Pay event - for monetization tracking
-    - event_name: "pay"
-      fields:
-        - "appid"
-        - "amount"
-        - "currency"
-        - "storename"
-    
-    # VIP Level event
-    - event_name: "app_vip_level_up"
-      fields:
-        - "app_id"
-        - "game_id"
-        - "role_id"
-        - "server_id"
-        - "current_vip_level"
-        - "postfix"
-        - "#zone_offset"
+  sync_on_startup: false  # Disable auto-sync in production, use scheduler
 
-# RFM Analysis Thresholds
-# Used for criteria: Recency/Frequency/Monetary is [Low|Medium|High]
-rfm:
-  currency: "VND"
-  
-  # Recency: days since last purchase
-  # Low = purchased > 30 days ago (dormant)
-  # Medium = purchased 7-30 days ago
-  # High = purchased within 7 days (recent buyer)
-  recency:
-    low_max: 30      # < 30 days = not Low
-    high_min: 7      # <= 7 days = High (note: lower is better for recency)
-  
-  # Frequency: total number of purchases
-  # Low = less than 2 purchases
-  # Medium = 2-10 purchases
-  # High = more than 10 purchases
-  frequency:
-    low_max: 2       # < 2 purchases = Low
-    high_min: 10     # >= 10 purchases = High
-  
-  # Monetary: total spend in VND
-  # Low = spent less than 100,000 VND (~$4)
-  # Medium = spent 100,000 - 2,000,000 VND
-  # High = spent more than 2,000,000 VND (~$80)
-  monetary:
-    low_max: 100000       # < 100K VND = Low
-    high_min: 2000000     # >= 2M VND = High
-
-# Aggregation Refresh Scheduler
-# Handles periodic refresh of pre-aggregate tables (user_daily_activity, users, etc.)
-# No OPTIMIZE TABLE needed - uses FINAL modifier for deduplication at query time
-# Note: Full refresh also runs automatically after ThinkingData sync completes
-scheduler:
-  enabled: true
-  incremental_refresh_minutes: 10   # How often to refresh recent data (default: 10 min)
-  incremental_days: 7               # Days to include in incremental refresh
-  full_refresh_hour: 3              # Hour (0-23) for daily full refresh (3 AM)
+  event_types:
+    - app_page_view
+    - pay
+    - app_vip_level_up

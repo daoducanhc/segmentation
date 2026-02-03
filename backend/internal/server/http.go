@@ -20,7 +20,7 @@ import (
 )
 
 // NewHTTPServer creates a new HTTP server with REST endpoints.
-func NewHTTPServer(c *conf.Server, segmentSvc *service.SegmentService, logger log.Logger) *kratoshttp.Server {
+func NewHTTPServer(c *conf.Server, segmentSvc *service.SegmentService, logger log.Logger, staticDir string) *kratoshttp.Server {
 	var opts = []kratoshttp.ServerOption{
 		kratoshttp.Middleware(
 			recovery.Recovery(),
@@ -54,6 +54,12 @@ func NewHTTPServer(c *conf.Server, segmentSvc *service.SegmentService, logger lo
 	srv.HandleFunc("/v1/segments/{id}/users-file", makeAddUsersHandler(segmentSvc))
 
 	v1.RegisterSegmentServiceHTTPServer(srv, segmentSvc)
+
+	// Serve static files (frontend) if staticDir is provided
+	if staticDir != "" {
+		srv.HandlePrefix("/", http.FileServer(http.Dir(staticDir)))
+	}
+
 	return srv
 }
 

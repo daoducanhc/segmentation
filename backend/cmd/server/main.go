@@ -24,9 +24,11 @@ import (
 )
 
 var flagconf string
+var staticDir string
 
 func init() {
 	flag.StringVar(&flagconf, "conf", "configs/config.yaml", "config path, eg: -conf config.yaml")
+	flag.StringVar(&staticDir, "s", "", "static files directory, eg: -s ./dist")
 }
 
 func main() {
@@ -141,7 +143,7 @@ func main() {
 
 	// Initialize servers
 	grpcServer := server.NewGRPCServer(bc.Server, segmentService, logger)
-	httpServer := server.NewHTTPServer(bc.Server, segmentService, logger)
+	httpServer := server.NewHTTPServer(bc.Server, segmentService, logger, staticDir)
 
 	// Initialize Kafka consumer
 	var kafkaConsumer *consumer.KafkaConsumer
