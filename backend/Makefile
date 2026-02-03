@@ -44,10 +44,6 @@ swagger:
 build:
 	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/ ./...
 
-.PHONY: test
-test:
-	go test -v ./... -cover
-
 .PHONY: run
 run:
 	go run ./cmd/server -conf ./configs/config.yaml
@@ -65,17 +61,12 @@ migrate:
 migrate-soft:
 	docker exec -i mgp-clickhouse-local clickhouse-client --multiquery < ./migrations/001_init_schema.sql
 
-.PHONY: lint
-lint:
-	golangci-lint run ./...
-
-
 .PHONY: clean
 clean:
 	rm -rf bin/
 
 .PHONY: all
-all: api build
+all: api build swagger
 
 help:
 	@echo ''
@@ -87,12 +78,9 @@ help:
 	@echo '  api                 Generate Go code from proto files'
 	@echo '  swagger             Generate openapi.yaml from proto files'
 	@echo '  build               Build the binary'
-	@echo '  test                Run tests'
 	@echo '  run                 Run the server locally'
-	@echo '  docker              Build Docker image'
 	@echo '  migrate             Reset and run database migrations (drops DB first)'
 	@echo '  migrate-soft        Run migrations without dropping (may fail if exists)'
-	@echo '  lint                Run linter'
 	@echo '  clean               Clean build artifacts'
 	@echo ''
 	@echo 'Swagger UI: http://localhost:8000/q/swagger-ui (when server is running)'

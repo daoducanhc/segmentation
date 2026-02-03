@@ -384,41 +384,15 @@ segmentation/
 # Build
 make build
 
-# Run tests
-make test
-
 # Generate API from proto
 make api
 
 # Run locally
 make run
 
-# Docker build
-make docker
+# All
+make all
 ```
-
-## Production Deployment
-
-### Resource Requirements
-
-| Resource | Minimum | Recommended |
-|----------|---------|-------------|
-| Memory | 4GB | 8GB |
-| CPU | 2 cores | 4 cores |
-| Disk | 50GB | 100GB+ |
-
-ClickHouse requirements:
-- Memory: 8-16GB
-- CPU: 4-8 cores
-- Disk: SSD recommended
-
-### Performance Expectations
-
-| Scale | Query Performance |
-|-------|-------------------|
-| 2M users | All queries < 5 seconds |
-| A7 segment (~100k users) | Sub-second |
-| Complex composite segments | 3-5 seconds |
 
 ## License
 

@@ -112,6 +112,25 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/api.segment.v1.CreateSegmentResponse'
+    /v1/segments/distinct-values/{field}:
+        get:
+            tags:
+                - SegmentService
+            description: GetDistinctValues returns distinct values for a profile field
+            operationId: SegmentService_GetDistinctValues
+            parameters:
+                - name: field
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.segment.v1.GetDistinctValuesResponse'
     /v1/segments/preview:
         post:
             tags:
@@ -494,6 +513,13 @@ components:
                 propertyFilter:
                     $ref: '#/components/schemas/api.segment.v1.ConditionGroup'
             description: 'EventCondition represents conditions on event data. Examples: - A7 users: event_name=app_page_view, lookback_days=7, count_operator=4(GTE), count_value=1 - Paid users: event_name=pay, lookback_days=30, count_operator=4(GTE), count_value=1 - High spenders: event_name=pay with property_filter on amount'
+        api.segment.v1.GetDistinctValuesResponse:
+            type: object
+            properties:
+                values:
+                    type: array
+                    items:
+                        type: string
         api.segment.v1.GetSegmentResponse:
             type: object
             properties:
